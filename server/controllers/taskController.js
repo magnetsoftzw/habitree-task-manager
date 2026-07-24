@@ -116,8 +116,8 @@ exports.deleteTask = async (req, res) => {
     try {
         const taskId = req.params.id;
 
-        // 1. Find the task first to get its ProjectID
-        const task = await Task.findById(taskId);
+        // 1. Find the task first to get its ProjectID (scoped to the requesting user)
+        const task = await Task.findOne({ _id: taskId, userId: req.user.id });
         if(!task) return res.status(404).json({ success: false, message: "Task not found" });
 
         // 2. Remove Task ID from the Project's Kanban arrays

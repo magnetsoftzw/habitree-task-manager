@@ -31,7 +31,10 @@ exports.createProject = async(req, res) => {
 // @route   GET /api/projects/:id
 exports.getSingleProject = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id)
+        const project = await Project.findOne({
+            _id: req.params.id,
+            $or: [{ owner: req.user.id }, { collaborators: req.user.id }]
+        })
             .populate({
                 path: 'kanban.backendBacklog kanban.frontendBacklog kanban.mobileBacklog kanban.design kanban.issues kanban.todo kanban.doing kanban.testing kanban.done',
                 model: 'Task',
@@ -142,8 +145,16 @@ exports.moveTask = async (req, res) => {
     const projectId = req.params.id;
 
     try {
-        const project = await Project.findById(projectId);
+        const project = await Project.findOne({
+            _id: projectId,
+            $or: [{ owner: req.user.id }, { collaborators: req.user.id }]
+        });
         if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+        // 0. Validate that both columns are real Kanban columns on this project
+        if (!Array.isArray(project.kanban[fromColumn]) || !Array.isArray(project.kanban[toColumn])) {
+            return res.status(400).json({ success: false, message: 'Invalid Kanban column' });
+        }
 
         // 1. Move task ID within the Project's kanban arrays
         project.kanban[fromColumn] = project.kanban[fromColumn].filter(id => id.toString() !== taskId);
@@ -152,7 +163,7 @@ exports.moveTask = async (req, res) => {
         // 2. Define standard task updates
         const taskUpdates = {
             kanban: toColumn,
-            status: toColumn === 'done' ? 'Completed' : 'In Progress'
+            status: toColumn === 'done' ? 'Completed' : 'Not Started'
         };
 
         // 3. Logic for moving to 'doing' (Planner Integration)

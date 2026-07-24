@@ -7,7 +7,7 @@ const Roadmap = require('../models/roadmap');
  */
 const isTaskLocked = async (taskId) => {
     // 1. Find the roadmap that contains this task as a node
-    const roadmap = await Roadmap.findOne({ "node.id": taskId.toString() });
+    const roadmap = await Roadmap.findOne({ "nodes.id": taskId.toString() });
 
     //If no roadmap exists or the task isn't in one, it's not locked by dependencies
     if (!roadmap) return false;
@@ -22,7 +22,7 @@ const isTaskLocked = async (taskId) => {
 
     // 3. Check the internal status of those prerequisite nodes
     // The nodes.data.status is kept in sync via our Task Mongoose middleware
-    const incompletePrereqs = roadmaon.nodes.filter(node => 
+    const incompletePrereqs = roadmap.nodes.filter(node =>
         prerequisites.includes(node.id) && node.data.status !== 'Completed'
     );
 

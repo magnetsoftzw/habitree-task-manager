@@ -7,7 +7,8 @@ const SubtaskSchema = new mongoose.Schema({
         type: String,
         enum: ['Not Started', 'On-Going', 'On-Hold', 'Completed', 'Shelved'],
         default: 'Not Started'
-    }
+    },
+    scheduledDate: { type: Date, default: null }
 });
 
 const TaskSchema = new mongoose.Schema({
@@ -38,6 +39,7 @@ const TaskSchema = new mongoose.Schema({
         ],
         default: 'Todo'
     },
+    scheduledDate: { type: Date, default: null },
     subtasks: [SubtaskSchema]
 
 }, { timestamps: true });

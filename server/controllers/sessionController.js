@@ -32,6 +32,11 @@ exports.saveSession= async (req, res) => {
 exports.syncMobileSessions = async (req, res) => {
     try {
         const { actionQueue } = req.body; // Array of session objects
+
+        if (!Array.isArray(actionQueue)) {
+            return res.status(400).json({ success: false, message: "actionQueue must be an array" });
+        }
+
         const results = { synced: [], conflicts: [], skipped: 0 };
 
         for (const mobileSess of actionQueue) {
@@ -92,7 +97,7 @@ exports.resolveConflict = async (req, res) => {
         const { action, mobileSession, existingSessionId } = req.body;
 
         if (action === 'OVERWRITE') {
-            await Session.findByIdAndDelete(exisitingSessionId);
+            await Session.findByIdAndDelete(existingSessionId);
             const newSess = await Session.create({
                 ...mobileSession,
                 userId: req.user.id,

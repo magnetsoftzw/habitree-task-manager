@@ -3,12 +3,12 @@ const mongoose = require('mongoose');
 const notificationSchema = new mongoose.Schema({
     recipient: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'user',
+        ref: 'User',
         required: true,
     },
     sender: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'user',
+        ref: 'User',
         required: true
     },
     type: {
@@ -17,7 +17,7 @@ const notificationSchema = new mongoose.Schema({
         default: 'INVITE'
     },
     message: { type: String, required: true },
-    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'project' },
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     isRead: { type: Boolean, default: false }
 }, {
     timestamps: true

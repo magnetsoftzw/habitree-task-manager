@@ -13,7 +13,7 @@ exports.createSubtask = async (req, res) => {
             status: 'Not Started'
         };
 
-        tasks.subtasks.push(newSubtask);
+        task.subtasks.push(newSubtask);
         await task.save(); //Triggers the Roadmap sync Middleware
 
         res.status(201).json({ success: true, subtasks: task.subtasks });
@@ -27,11 +27,11 @@ exports.createSubtask = async (req, res) => {
 // @route   PATCH /api/tasks/:taskId/subtasks/:subTaskId
 exports.updateSubtask = async (req, res) => {
     try {
-        const { taskId, subtaskId } = req.params;
+        const { taskId, subTaskId } = req.params;
         const updates = req.body;
 
         const task = await Task.findOneAndUpdate(
-            { _id: taskId, "subtasks._id": subtaskId },
+            { _id: taskId, "subtasks._id": subTaskId },
             {
                 $set: {
                     "subtasks.$.title": updates.title,
@@ -43,16 +43,20 @@ exports.updateSubtask = async (req, res) => {
             { new: true }
         );
 
+        if (!task) {
+            return res.status(404).json({ success: false, message: "Task or subtask not found" });
+        }
+
         if (updates.status === 'Completed') {
             await Task.updateOne(
-                { _id: taskId, "subtasks.id": subtaskId },
+                { _id: taskId, "subtasks._id": subTaskId },
                 { $set: { "subtasks.$.isCompleted": true } }
             );
         }
 
         await task.save(); //recalculate parent task progress
         res.json({ success: true, task });
-        
+
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -63,14 +67,18 @@ exports.updateSubtask = async (req, res) => {
 exports.deleteSubtask = async (req, res) => {
     try {
         const task = await Task.findByIdAndUpdate(
-            req.params.id,
-            { $pull: { subtasks: { _id: req.params.subtaskId } } },
+            req.params.taskId,
+            { $pull: { subtasks: { _id: req.params.subTaskId } } },
             { new: true }
         );
 
+        if (!task) {
+            return res.status(404).json({ success: false, message: "Task not found" });
+        }
+
         await task.save();
         res.json({ success: true, message: "Subtask removed successfully" });
-        
+
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
