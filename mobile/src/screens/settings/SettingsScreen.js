@@ -15,6 +15,7 @@ import { setThemeMode } from '../../store/slices/PrefsSlice';
 import { clearFocus } from '../../store/slices/FocusSlice';
 import { disconnectSocket } from '../../api/Socket';
 import TemplateSheet from '../../components/schedule/TemplateSheet';
+import StorageSyncCard from '../../components/settings/StorageSyncCard';
 import { ensurePermission, syncPlanReminders } from '../../utils/Notifications';
 import { initials, monthYear } from '../../utils/Format';
 
@@ -99,10 +100,14 @@ export default function SettingsScreen({ navigation }) {
     if (key) syncPlanReminders(key, todayPlan[key], on);
   };
 
-  const signOut = () => Alert.alert('Log out?', 'You can log back in at any time.', [
+  const unsynced = useSelector((s) => s.sync.outbox.length);
+  const signOut = () => Alert.alert('Log out?', unsynced
+    ? `${unsynced} change${unsynced === 1 ? " hasn't" : "s haven't"} synced yet and will be lost if you log out now. Connect to the internet first to keep ${unsynced === 1 ? 'it' : 'them'}.`
+    : 'You can log back in at any time.', [
     { text: 'Cancel', style: 'cancel' },
     {
-      text: 'Log out',
+      text: unsynced ? 'Log out anyway' : 'Log out',
+      style: unsynced ? 'destructive' : 'default',
       onPress: () => {
         disconnectSocket();
         syncPlanReminders('', [], false);
@@ -157,6 +162,8 @@ export default function SettingsScreen({ navigation }) {
         <Card padded={false} accessibilityLabel="Daily schedule" style={{ overflow: 'hidden' }}>
           <Row label="Default day schedule" icon={Clock3} onPress={() => setSheet('schedule')} last><ChevronRight size={18} color={colors.textMuted} /></Row>
         </Card>
+
+        <StorageSyncCard />
 
         <Card padded={false} accessibilityLabel="Session" style={{ overflow: 'hidden' }}>
           <Row label="Log out" icon={LogOut} onPress={signOut} bold />

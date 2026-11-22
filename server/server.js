@@ -14,16 +14,16 @@ mongoose.connection.once('open', () => {
     runMigrations().catch((error) => console.error('Migration failed:', error.message));
 });
 
-const server = http.createServer();
+let io = null;
+const relay = { to: (room) => (io ? io.to(room) : { emit: () => {} }) };
+const server = http.createServer(createApp(relay));
 
-const io = new Server(server, {
+io = new Server(server, {
     cors: {
         origin: process.env.FRONTEND_URL || '*',
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     },
 });
-
-server.on('request', createApp(io));
 
 io.use((socket, next) => {
     try {
