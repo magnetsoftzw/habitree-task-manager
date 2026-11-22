@@ -1,68 +1,80 @@
-import { MoreVertical } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, ExternalLink, ListChecks, Trash2 } from 'lucide-react';
+import Menu from '../../ui/Menu';
+import { colorFor } from '../../../utils/Colors';
+import { formatDueDate } from '../../../utils/Format';
+import './ProjectCard.css';
 
-import Avatar from '../../../assets/profile.png';
-import './projectCard.css';
+const initialsOf = (name = '') =>
+    name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || '?';
 
-const KANBAN_COLUMNS = [
-    'backendBacklog', 'frontendBacklog', 'mobileBacklog',
-    'design', 'issues', 'todo', 'doing', 'testing', 'done',
-    'blocked', 'onHold', 'trash',
-];
-
-const calcProjectProgress = (kanban) => {
-    if (!kanban) return 0;
-    const total = KANBAN_COLUMNS.reduce((sum, col) => sum + (kanban[col]?.length || 0), 0);
-    if (total === 0) return 0;
-    const done = kanban.done?.length || 0;
-    return Math.round((done / total) * 100);
-};
-
-const ProjectCard = ({ project }) => {
+const ProjectCard = ({ project, onDelete }) => {
     const navigate = useNavigate();
-    const progress = calcProjectProgress(project.kanban);
+    const color = colorFor(project);
+    const members = [project.owner, ...(project.collaborators || [])].filter(Boolean);
+    const cards = project.boardCardCount ?? 0;
+    const tasks = project.openTaskCount ?? 0;
+    const progress = Math.max(0, Math.min(100, project.progress || 0));
 
     return (
-        <div className="project-card" onClick={() => navigate(`/projects/${project._id}`)}>
-            <div className="project-card-header">
-                <h3>{project.name}</h3>
-                <button className="btn-icon-ghost">
-                    <MoreVertical size={18} />
-                </button>
+        <article className="project-card">
+            <div className="project-card-head">
+                <span className="project-card-badge" style={{ background: color }} aria-hidden="true">
+                    {initialsOf(project.name)}
+                </span>
+                <div className="project-card-title-wrap">
+                    <h2 className="project-card-title">
+                        <Link to={`/projects/${project._id}`}>{project.name}</Link>
+                    </h2>
+                    {project.createdAt && (
+                        <span className="project-card-meta">Created {formatDueDate(project.createdAt)}</span>
+                    )}
+                </div>
+                <Menu
+                    label={`Options for ${project.name}`}
+                    items={[
+                        { label: 'Open board', icon: <ExternalLink size={16} />, onSelect: () => navigate(`/projects/${project._id}?view=board`) },
+                        { label: 'Open task list', icon: <ListChecks size={16} />, onSelect: () => navigate(`/projects/${project._id}?view=list`) },
+                        onDelete && { label: 'Delete project', icon: <Trash2 size={16} />, danger: true, onSelect: () => onDelete(project) },
+                    ]}
+                />
             </div>
 
-            <p className="project-description">{project.description}</p>
+            <p className="project-card-desc">{project.description || 'No description'}</p>
 
-            <div className="progress-section">
-                <span className="label">Progress</span>
-                <div className="progress-bar-container">
-                    <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+            {project.techStack?.length > 0 && (
+                <ul className="project-card-tags" aria-label="Tech stack">
+                    {project.techStack.map((t) => <li key={t}>{t}</li>)}
+                </ul>
+            )}
+
+            <div className="project-card-progress">
+                <div className="project-card-counts">
+                    <span>Board · {cards} {cards === 1 ? 'card' : 'cards'}</span>
+                    <span>Task list · {tasks} {tasks === 1 ? 'task' : 'tasks'}</span>
+                </div>
+                <div className="progress" role="img" aria-label={`${progress} percent complete`}>
+                    <span style={{ width: `${progress}%`, background: color }} />
                 </div>
             </div>
 
-            <div className="tech-stack-tags">
-                {project.techStack.map((tech, idx) => (
-                    <span key={idx} className="tech-tag">{tech}</span>
-                ))}
-            </div>
-
-            <div className="project-card-footer">
-                <div className="collaborators">
-                    <span className="label">Collaborators</span>
-                    <div className="avatar-group">
-                        {/* Show owner and collaborators */}
-                        <img src={Avatar} className="avatar-circle" title="Owner" />
-                        {project.collaborators.slice(0, 3).map(c => (
-                            <img key={c._id} src={c.avatar} className="avatar-circle" />
-                        ))}
-                    </div>
+            <div className="project-card-foot">
+                <div className="project-card-avatars">
+                    {members.slice(0, 4).map((m) => (
+                        <span key={m._id || m} className="project-card-avatar" title={m.username}>
+                            {(m.username || '?').charAt(0).toUpperCase()}
+                        </span>
+                    ))}
                 </div>
-                <div className="creation-date">
-                    <span className="label">Date Created:</span>
-                    <span className="date-text">{project.formattedDate}</span>
-                </div>
+                <span className="project-card-team">
+                    {members.length <= 1 ? 'Only you' : `${members.length} members`}
+                </span>
+                <Link to={`/projects/${project._id}?view=list`} className="project-card-link">Task list</Link>
+                <Link to={`/projects/${project._id}`} className="project-card-open">
+                    Open board <ArrowRight size={14} strokeWidth={2.2} aria-hidden="true" />
+                </Link>
             </div>
-        </div>
+        </article>
     );
 };
 

@@ -7,7 +7,7 @@ const sessionSchema = new mongoose.Schema({
         required: true
     },
     startTime: {
-        type: Date, 
+        type: Date,
         required: true
     },
     endTime: {
@@ -23,9 +23,13 @@ const sessionSchema = new mongoose.Schema({
         required: true
     },
     date: {
-        type: Date, 
+        type: Date,
         default: Date.now
     },
+    taskType: { type: String, enum: ['task', 'projectTask', null], default: null },
+    taskId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+    titleSnapshot: { type: String, default: '' },
     mobileSyncId: {
         type: String,
         unique: true,

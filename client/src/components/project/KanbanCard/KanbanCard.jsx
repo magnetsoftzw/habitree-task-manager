@@ -1,152 +1,112 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { Snackbar, Alert } from '@mui/material';
-import { MoreHorizontal, User, Check, X, Copy } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Draggable } from '@hello-pangea/dnd';
-import { updateTask, deleteTask, moveTaskBetweenColumns } from '../../../store/slices/projectSlice';
-import MoveCardModal from '../../modals/Project/MoveCardModal';
-import './kanbanCard.css';
+import { ArrowRightLeft, Check, Clock, Copy, Pencil, Trash2 } from 'lucide-react';
+import Menu from '../../ui/Menu';
+import { deleteTask, updateTask } from '../../../store/slices/projectSlice';
+import { cardTag, formatHours } from '../../../utils/Board';
+import './KanbanCard.css';
 
-const KanbanCard = ({ task, index, isSelected = false, onToggleSelect }) => {
-    const menuRef = useRef(null);
+const KanbanCard = ({ task, index, columnKey, isSelected, selecting, onToggleSelect, onMove }) => {
     const dispatch = useDispatch();
-    const [showOptions, setShowOptions] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editedTitle, setEditedTitle] = useState(task.title);
-    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
-    const [snackbarOpen, setSnackbarOpen] = useState(false);
-    
-    const handleCopy = () => {
-        navigator.clipboard.writeText(task.title)
-            .then(() => {
-                setSnackbarOpen(true); // Trigger feedback
-                setShowOptions(false);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(task.title);
+    const tag = cardTag(task, columnKey);
+    const owner = task.userId?.username;
+
+    const save = () => {
+        const title = draft.trim();
+        setEditing(false);
+        if (!title || title === task.title) {
+            setDraft(task.title);
+            return;
+        }
+        dispatch(updateTask({ taskId: task._id, updates: { title } }))
+            .unwrap()
+            .catch(() => {
+                setDraft(task.title);
+                toast.error('Could not rename that card');
             });
     };
 
-    const handleMoveTask = (taskId, sourceColumn, targetColumn) => {
-        if (sourceColumn !== targetColumn) {
-            dispatch(moveTaskBetweenColumns({ 
-                projectId: task.projectId, 
-                taskId, 
-                fromColumn: sourceColumn, 
-                toColumn: targetColumn 
-            }));
-        }
-        setIsMoveModalOpen(false);
+    const copy = () => {
+        navigator.clipboard?.writeText(task.title).then(() => toast.success('Title copied'));
     };
 
-    const formatDate = (dateString) => {
-        if (!dateString) return 'No Date';
-        return new Date(dateString).toISOString().split('T')[0];
-    };
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
-                setShowOptions(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const handleUpdate = () => {
-        if (editedTitle.trim() !== "" && editedTitle !== task.title) {
-            dispatch(updateTask({ taskId: task._id, updates: { title: editedTitle } }));
-        }
-        setIsEditing(false);
-    };
-
-    const handleDelete = () => {
-        if (window.confirm("Are you sure you want to delete this task?")) {
-            dispatch(deleteTask({ taskId: task._id, projectId: task.projectId, columnId: task.kanban }));
-        }
-        setShowOptions(false);
+    const remove = () => {
+        if (!window.confirm(`Delete "${task.title}"?`)) return;
+        dispatch(deleteTask({ taskId: task._id, columnId: columnKey }))
+            .unwrap()
+            .catch(() => toast.error('Could not delete that card'));
     };
 
     return (
-        <Draggable draggableId={task._id} index={index}>
+        <Draggable draggableId={task._id} index={index} isDragDisabled={editing}>
             {(provided, snapshot) => (
-                <div 
-                    className={`kanban-card ${snapshot.isDragging ? 'dragging' : ''} ${isSelected ? 'card-selected' : ''}`}
+                <article
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
-                    style={{ ...provided.draggableProps.style }}
+                    className={`kanban-card ${snapshot.isDragging ? 'is-dragging' : ''} ${isSelected ? 'is-selected' : ''} ${selecting ? 'is-selecting' : ''}`}
+                    aria-label={task.title}
                 >
-                    <div className={`kanban-card-header ${showOptions ? 'extend' : 'shrink'}`}>
-                        {/* Selection checkbox */}
+                    <div className="kanban-card-top">
                         <button
-                            className={`card-select-btn ${isSelected ? 'card-select-btn--active' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); onToggleSelect?.(task._id); }}
-                            title={isSelected ? 'Deselect' : 'Select'}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={isSelected}
+                            aria-label={`Select ${task.title}`}
+                            className="kanban-card-select"
+                            onClick={() => onToggleSelect(task._id)}
                         >
-                            {isSelected ? <Check size={11} /> : null}
+                            {isSelected && <Check size={12} strokeWidth={3} />}
                         </button>
-                        {isEditing ? (
-                            <div className="edit-mode-container">
-                                <input 
-                                    className="edit-task-input"
-                                    value={editedTitle}
-                                    onChange={(e) => setEditedTitle(e.target.value)}
-                                    autoFocus
-                                />
-                                <div className="edit-actions">
-                                    <Check size={14} className="save-icon" onClick={handleUpdate} />
-                                    <X size={14} className="cancel-icon" onClick={() => { setIsEditing(false); setEditedTitle(task.title); }} />
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="task-title">{task.title || 'Untitled Task'}</p>
+                        {tag && <span className={`kanban-tag tag-${tag.toLowerCase()}`}>{tag}</span>}
+                        <span className="kanban-card-spacer" />
+                        <Menu
+                            label={`Actions for ${task.title}`}
+                            items={[
+                                { label: 'Rename', icon: <Pencil size={16} />, onSelect: () => setEditing(true) },
+                                { label: 'Move to…', icon: <ArrowRightLeft size={16} />, onSelect: () => onMove(task, columnKey) },
+                                { label: 'Copy title', icon: <Copy size={16} />, onSelect: copy },
+                                { label: 'Delete', icon: <Trash2 size={16} />, danger: true, onSelect: remove },
+                            ]}
+                        />
+                    </div>
+
+                    {editing ? (
+                        <input
+                            className="kanban-card-input"
+                            aria-label="Card title"
+                            value={draft}
+                            autoFocus
+                            maxLength={200}
+                            onChange={(e) => setDraft(e.target.value)}
+                            onBlur={save}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') save();
+                                if (e.key === 'Escape') {
+                                    setDraft(task.title);
+                                    setEditing(false);
+                                }
+                            }}
+                        />
+                    ) : (
+                        <span className="kanban-card-title" onDoubleClick={() => setEditing(true)}>{task.title || 'Untitled card'}</span>
+                    )}
+
+                    <div className="kanban-card-meta">
+                        <span className="kanban-card-time" title="Focus time">
+                            <Clock size={13} aria-hidden="true" />
+                            {formatHours(task.focusMinutes)}
+                        </span>
+                        <span className="kanban-card-spacer" />
+                        {owner && (
+                            <span className="kanban-card-avatar" title={owner}>{owner.charAt(0).toUpperCase()}</span>
                         )}
-                        
-                        <div className="options-container" ref={menuRef}>
-                            <button className="card-action-btn" onClick={() => setShowOptions(!showOptions)}>
-                                <MoreHorizontal size={14} />
-                            </button>
-
-                            {showOptions && (
-                                <div className="card-options-menu">
-                                    <button className="menu-item" onClick={() => { setIsEditing(true); setShowOptions(false); }}>EDIT</button>
-                                    <button className="menu-item" onClick={handleCopy}>COPY</button> {/* Added Copy Button */}
-                                    <button className="menu-item" onClick={() => { setIsMoveModalOpen(true); setShowOptions(false); }}>MOVE</button>
-                                    <button className="menu-item delete-item" onClick={handleDelete}>DELETE</button>
-                                </div>
-                            )}
-                        </div>
                     </div>
-
-                    <div className="kanban-card-footer">
-                        <div className="task-assignee">
-                            {task.userId?.avatar ? (
-                                <img src={task.userId.avatar} alt={task.userId.username} className="assignee-avatar" />
-                            ) : (
-                                <div className="assignee-placeholder"><User size={12} /></div>
-                            )}
-                            <span className="assignee-name">{task.userId?.username || 'Unassigned'}</span>
-                        </div>
-                        <span className="task-date">{formatDate(task.createdAt)}</span>
-                    </div>
-
-                    <MoveCardModal 
-                        isOpen={isMoveModalOpen}
-                        onClose={() => setIsMoveModalOpen(false)}
-                        task={task}
-                        onMove={handleMoveTask}
-                        columnKeys={['backendBacklog', 'frontendBacklog', 'mobileBacklog', 'design', 'todo', 'doing', 'testing', 'done']}
-                    />
-                    <Snackbar 
-                        open={snackbarOpen} 
-                        autoHideDuration={2000} 
-                        onClose={() => setSnackbarOpen(false)}
-                        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-                    >
-                        <Alert severity="success" sx={{ width: '100%' }}>
-                            Title copied to clipboard!
-                        </Alert>
-                    </Snackbar>
-                </div>
+                </article>
             )}
         </Draggable>
     );

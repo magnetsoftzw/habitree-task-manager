@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/axiosInstance';
+import { toDateKey } from '../../utils/Format';
 
 export const fetchPlannerByDate = createAsyncThunk(
     'planner/fetchByDate',
@@ -15,13 +16,16 @@ export const fetchPlannerByDate = createAsyncThunk(
 
 export const assignTaskToDate = createAsyncThunk(
     'planner/assignTask',
-    async ({ date, taskId, subtaskId, time, comments }, { rejectWithValue }) => {
+    async ({ date, taskId, subtaskId, time, comments, taskType, projectId, duration }, { rejectWithValue }) => {
         try {
-            const response = await API.post(`/planner/${date}/add`, { 
-                taskId, 
-                subtaskId, 
-                time, 
-                comments 
+            const response = await API.post(`/planner/${date}/add`, {
+                taskId,
+                subtaskId,
+                time,
+                comments,
+                ...(taskType && { taskType }),
+                ...(projectId && { projectId }),
+                ...(duration && { duration }),
             });
             return response.data;
         } catch(error) {
@@ -44,9 +48,9 @@ export const removeTaskFromPlanner = createAsyncThunk(
 
 export const updatePlannerEntry = createAsyncThunk(
     'planner/updateEntry',
-    async ({ date, entryId, time, comments }, { rejectWithValue }) => {
+    async ({ date, entryId, time, comments, duration }, { rejectWithValue }) => {
         try {
-            const response = await API.patch(`/planner/${date}/${entryId}`, { time, comments });
+            const response = await API.patch(`/planner/${date}/${entryId}`, { time, comments, duration });
             return response.data.planner;
         } catch (error) {
             return rejectWithValue(error.response?.data);
@@ -57,7 +61,7 @@ export const updatePlannerEntry = createAsyncThunk(
 const plannerSlice = createSlice({
     name: 'planner',
     initialState: {
-        activeDate: new Date().toISOString().split('T')[0],
+        activeDate: toDateKey(),
         dayData: { tasks: [] },
         loading: false,
         scheduling: false,

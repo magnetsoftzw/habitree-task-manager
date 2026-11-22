@@ -4,7 +4,7 @@ const Task = require('../models/task');
 // @route   POST /api/tasks/:taskId/subtasks
 exports.createSubtask = async (req, res) => {
     try {
-        const task = await Task.findById(req.params.taskId);
+        const task = await Task.findOne({ _id: req.params.taskId, userId: req.user.id });
         if(!task) return res.status(404).json({ success: false, message: "Task not found" });
 
         const newSubtask = {
@@ -30,31 +30,19 @@ exports.updateSubtask = async (req, res) => {
         const { taskId, subTaskId } = req.params;
         const updates = req.body;
 
-        const task = await Task.findOneAndUpdate(
-            { _id: taskId, "subtasks._id": subTaskId },
-            {
-                $set: {
-                    "subtasks.$.title": updates.title,
-                    "subtasks.$.isCompleted": updates.isCompleted,
-                    "subtasks.$.status": updates.status,
-                    "subtasks.$.scheduledDate": updates.scheduledDate
-                }
-            },
-            { new: true }
-        );
+        const task = await Task.findOne({ _id: taskId, userId: req.user.id });
+        const subtask = task?.subtasks.id(subTaskId);
 
-        if (!task) {
+        if (!subtask) {
             return res.status(404).json({ success: false, message: "Task or subtask not found" });
         }
 
-        if (updates.status === 'Completed') {
-            await Task.updateOne(
-                { _id: taskId, "subtasks._id": subTaskId },
-                { $set: { "subtasks.$.isCompleted": true } }
-            );
-        }
+        ['title', 'isCompleted', 'status', 'scheduledDate'].forEach((key) => {
+            if (updates[key] !== undefined) subtask[key] = updates[key];
+        });
+        if (updates.status === 'Completed') subtask.isCompleted = true;
 
-        await task.save(); //recalculate parent task progress
+        await task.save();
         res.json({ success: true, task });
 
     } catch (error) {
@@ -66,8 +54,8 @@ exports.updateSubtask = async (req, res) => {
 // @route   DELETE /api/tasks/:taskId/subtasks/:subTaskId
 exports.deleteSubtask = async (req, res) => {
     try {
-        const task = await Task.findByIdAndUpdate(
-            req.params.taskId,
+        const task = await Task.findOneAndUpdate(
+            { _id: req.params.taskId, userId: req.user.id },
             { $pull: { subtasks: { _id: req.params.subTaskId } } },
             { new: true }
         );

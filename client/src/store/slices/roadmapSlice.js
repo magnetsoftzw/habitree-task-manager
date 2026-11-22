@@ -49,6 +49,18 @@ export const saveRoadmapCanvas = createAsyncThunk(
     }
 );
 
+export const persistRoadmap = createAsyncThunk(
+    'roadmap/persist',
+    async ({ id, nodes, edges }, { rejectWithValue }) => {
+        try {
+            const { data } = await API.put(`/roadmaps/${id}`, { nodes, edges });
+            return data.roadmap;
+        } catch (error) {
+            return rejectWithValue(error.response?.data || { message: 'Save failed' });
+        }
+    }
+);
+
 export const updateRoadmapMeta = createAsyncThunk(
     'roadmap/updateMeta',
     async ({ id, skillName }, { rejectWithValue }) => {
@@ -106,6 +118,12 @@ const roadmapSlice = createSlice({
     },
     extraReducers: (builder) => {
         builder
+            .addCase(persistRoadmap.fulfilled, (state, action) => {
+                const r = action.payload;
+                if (!r?._id) return;
+                const i = state.list.findIndex((x) => x._id === r._id);
+                if (i !== -1) state.list[i] = { ...state.list[i], nodes: r.nodes, edges: r.edges, updatedAt: r.updatedAt };
+            })
             .addCase(fetchUserRoadmaps.pending, (state) => {
                 state.loading = true;
                 state.error = null;

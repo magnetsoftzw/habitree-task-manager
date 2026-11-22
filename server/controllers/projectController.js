@@ -4,22 +4,53 @@ const Task = require('../models/task');
 const User = require('../models/user');
 const Session = require('../models/session');
 const Notification = require('../models/notification');
-const sendEmail = require('../utils/sendEmail');
+const ProjectTask = require('../models/projectTask');
+const ProjectTaskGroup = require('../models/projectTaskGroup');
+const { findAccessibleProject, projectColor } = require('../utils/projectAccess');
+
+const KANBAN_COLUMNS = [
+    'backendBacklog', 'frontendBacklog', 'mobileBacklog', 'design', 'issues',
+    'todo', 'doing', 'testing', 'done', 'blocked', 'onHold', 'trash',
+];
+const BOARD_COLUMNS = KANBAN_COLUMNS.filter((c) => c !== 'trash');
+const TRACK_BY_COLUMN = { backendBacklog: 'Backend', frontendBacklog: 'Frontend', mobileBacklog: 'Mobile', design: 'Design' };
+
+const boardCardCount = (project) =>
+    BOARD_COLUMNS.reduce((sum, col) => sum + (project.kanban?.[col]?.length || 0), 0);
+
+const listCounts = async (projectIds) => {
+    const rows = await ProjectTask.aggregate([
+        { $match: { projectId: { $in: projectIds } } },
+        { $group: { _id: '$projectId', total: { $sum: 1 }, done: { $sum: { $cond: [{ $eq: ['$status', 'done'] }, 1, 0] } } } },
+    ]);
+    return new Map(rows.map((r) => [String(r._id), { total: r.total, done: r.done }]));
+};
+
+const progressOf = (project, list = { total: 0, done: 0 }) => {
+    const total = boardCardCount(project) + list.total;
+    const done = (project.kanban?.done?.length || 0) + list.done;
+    return total ? Math.round((done / total) * 100) : 0;
+};
 
 // @desc    Create a new project
 // @route   POST /api/projects
 exports.createProject = async(req, res) => {
     try {
-        const { name, description, collaborators, techStack } = req.body;
+        const { name, description, techStack, color } = req.body;
 
         const project = await Project.create({
             name,
             description: description || "No Description",
             owner: req.user.id,
-            collaborators: collaborators || [],
+            collaborators: [],
             techStack: techStack || [],
+            color: color || null,
             progress: 0
         });
+        if (!project.color) {
+            project.color = projectColor(project);
+            await project.save();
+        }
 
         res.status(201).json({ success: true, project });
     } catch (error) {
@@ -36,7 +67,7 @@ exports.getSingleProject = async (req, res) => {
             $or: [{ owner: req.user.id }, { collaborators: req.user.id }]
         })
             .populate({
-                path: 'kanban.backendBacklog kanban.frontendBacklog kanban.mobileBacklog kanban.design kanban.issues kanban.todo kanban.doing kanban.testing kanban.done',
+                path: BOARD_COLUMNS.map((c) => `kanban.${c}`).join(' '),
                 model: 'Task',
                 populate: {
                     path: 'userId',
@@ -49,9 +80,25 @@ exports.getSingleProject = async (req, res) => {
 
         if (!project) return res.status(404).json({ success: false, message: "Project not found" });
 
-        res.json({ success: true, project });
+        const cardIds = BOARD_COLUMNS.flatMap((c) => project.kanban[c].map((t) => t._id));
+        const minutes = await Session.aggregate([
+            { $match: { taskType: 'task', taskId: { $in: cardIds }, status: 'Completed' } },
+            { $group: { _id: '$taskId', minutes: { $sum: '$durationMinutes' } } },
+        ]);
+        const minutesById = new Map(minutes.map((m) => [String(m._id), m.minutes]));
+        const list = (await listCounts([project._id])).get(String(project._id)) || { total: 0, done: 0 };
+
+        const result = project.toJSON();
+        BOARD_COLUMNS.forEach((c) => {
+            result.kanban[c] = result.kanban[c].map((t) => ({ ...t, focusMinutes: minutesById.get(String(t._id)) || 0 }));
+        });
+        result.color = projectColor(project);
+        result.boardCardCount = boardCardCount(project);
+        result.openTaskCount = list.total - list.done;
+        result.progress = progressOf(project, list);
+
+        res.json({ success: true, project: result });
     } catch (error) {
-        // This will now catch the error and show you exactly what is wrong if it persists
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -67,7 +114,19 @@ exports.getProjects = async (req, res) => {
         .populate('owner', 'username email avatar')
         .populate('collaborators', 'username avatar');
 
-        res.json({ success: true, projects });
+        const counts = await listCounts(projects.map((p) => p._id));
+        const result = projects.map((p) => {
+            const list = counts.get(String(p._id)) || { total: 0, done: 0 };
+            return {
+                ...p.toJSON(),
+                color: projectColor(p),
+                boardCardCount: boardCardCount(p),
+                openTaskCount: list.total - list.done,
+                progress: progressOf(p, list),
+            };
+        });
+
+        res.json({ success: true, projects: result });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -77,9 +136,14 @@ exports.getProjects = async (req, res) => {
 // @route   PUT /api/projects/:id
 exports.updateProject = async (req, res) => {
     try {
+        const updates = {};
+        ['name', 'description', 'techStack', 'color'].forEach((key) => {
+            if (req.body[key] !== undefined) updates[key] = req.body[key];
+        });
+
         const project = await Project.findOneAndUpdate(
             { _id: req.params.id, owner: req.user.id },
-            { $set: req.body },
+            { $set: updates },
             { new: true, runValidators: true}
         );
 
@@ -102,8 +166,19 @@ exports.deleteProject = async (req, res) => {
             return res.status(404).json({ success: false, message: "Project not found" });
         }
 
-        const allTasksIds = Object.values(project.kanban).flat();
-        await Task.deleteMany({ _id: { $in: allTasksIds }});
+        const allTasksIds = KANBAN_COLUMNS.flatMap((c) => project.kanban[c] || []);
+        const listTaskIds = (await ProjectTask.find({ projectId: project._id }).select('_id')).map((t) => t._id);
+        const today = new Date().toISOString().split('T')[0];
+
+        await Promise.all([
+            Task.deleteMany({ $or: [{ _id: { $in: allTasksIds } }, { projectId: project._id }] }),
+            ProjectTask.deleteMany({ projectId: project._id }),
+            ProjectTaskGroup.deleteMany({ projectId: project._id }),
+            Planner.updateMany(
+                { date: { $gte: today } },
+                { $pull: { tasks: { taskId: { $in: [...allTasksIds, ...listTaskIds] } } } }
+            ),
+        ]);
 
         await project.deleteOne();
         res.json({ success: true, message: "Project and associated tasks deleted" });
@@ -118,13 +193,20 @@ exports.addTaskToProject = async (req, res) => {
     const projectId = req.params.id;
 
     try {
+        const project = await findAccessibleProject(projectId, req.user.id);
+        if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+        if (!KANBAN_COLUMNS.includes(columnId)) {
+            return res.status(400).json({ success: false, message: 'Invalid Kanban column' });
+        }
+
         const newTask = await Task.create({
-            title: title || 'New Task',
+            title: (typeof title === 'string' && title.trim()) || 'New Task',
             userId: req.user.id,
             projectId: projectId,
             category: 'Project',
             kanban: columnId,
-            status: 'Not Started'
+            track: TRACK_BY_COLUMN[columnId] || null,
+            status: columnId === 'done' ? 'Completed' : columnId === 'doing' ? 'On-Going' : 'Not Started'
         });
 
         await Project.findByIdAndUpdate(
@@ -173,38 +255,27 @@ exports.moveTask = async (req, res) => {
 
             const dateString = now.toISOString().split('T')[0];
 
-            await Planner.findOneAndUpdate(
-                {
-                    userId: req.user.id,
-                    date: dateString
-                },
-                {
-                    $addToSet: { // $addToSet prevents duplicate entries if they double-click
-                        tasks: {
-                            taskId: taskId,
-                            time: hourString,
-                            comments: "Started from Kanban"
-                        }
-                    }
-                },
-                {
-                    upsert: true,
-                    new: true,
-                    setDefaultsOnInsert: true
-                }
+            await Planner.updateOne(
+                { userId: req.user.id, date: dateString },
+                { $setOnInsert: { userId: req.user.id, date: dateString } },
+                { upsert: true }
+            );
+            await Planner.updateOne(
+                { userId: req.user.id, date: dateString, 'tasks.taskId': { $ne: taskId } },
+                { $push: { tasks: { taskType: 'task', taskId, time: hourString, duration: 60, comments: 'Started from Kanban' } } }
             );
 
             taskUpdates.status = 'On-Going';
         }
 
         // 4. Update the Task document
-        await Task.findByIdAndUpdate(taskId, taskUpdates);
+        await Task.findOneAndUpdate({ _id: taskId, projectId }, taskUpdates);
 
         // 5. Save the Project document
         await project.save();
 
         // 6. Real-time update
-        req.io.to(projectId).emit('taskMoved', {
+        req.io.to(String(projectId)).emit('taskMoved', {
             taskId,
             fromColumn,
             toColumn,

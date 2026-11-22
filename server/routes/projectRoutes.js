@@ -17,6 +17,9 @@ const {
 // All project interactions require authentication
 router.use(protect);
 
+router.use('/:projectId/tasks', require('./projectTaskRoutes'));
+router.use('/:projectId/task-groups', require('./projectTaskGroupRoutes'));
+
 // --- Core Project CRUD ---
 
 // @route   POST /api/projects (Create a new project)

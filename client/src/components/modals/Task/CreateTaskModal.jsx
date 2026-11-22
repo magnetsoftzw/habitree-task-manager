@@ -1,181 +1,200 @@
-import { useState, useEffect } from 'react';
-import { BeatLoader } from 'react-spinners';
-import { useSelector, useDispatch } from 'react-redux';
-import { fetchGroups, createGroup } from '../../../store/slices/groupSlice';
-import { X, Plus, Hash, Code, BookOpen, PlayCircle, FileText } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import toast from 'react-hot-toast';
+import { BookOpen, Code, FileText, Hash, PlayCircle, Plus, X } from 'lucide-react';
+import Modal from '../../ui/Modal';
+import { createGroup, fetchGroups } from '../../../store/slices/groupSlice';
+import { IDENTITY_PALETTE } from '../../../utils/Colors';
+import '../Project/ProjectModals.css';
+import './CreateTaskDialog.css';
 
-import Logo from '../../../assets/logo.png';
-import './createTaskModal.css';
+const CATEGORIES = [
+    { id: 'General', icon: Hash },
+    { id: 'Practice', icon: Code },
+    { id: 'Read', icon: BookOpen },
+    { id: 'Watch', icon: PlayCircle },
+    { id: 'Note', icon: FileText },
+];
 
-const CreateTaskModal = ({ isOpen, onClose, onCreate}) => {
+const CreateTaskModal = (props) => (props.isOpen ? <CreateTaskDialog {...props} /> : null);
 
+const CreateTaskDialog = ({ onClose, onCreate }) => {
     const dispatch = useDispatch();
-    const { list: groups, loading: groupsLoading } = useSelector((state) => state.groups);
-
-    const [taskTitle, setTaskTitle] = useState('');
-    const [selectedGroupId, setSelectedGroupId] = useState('');
+    const groups = useSelector((s) => s.groups.list);
+    const [title, setTitle] = useState('');
+    const [groupId, setGroupId] = useState('');
     const [category, setCategory] = useState('General');
     const [subtasks, setSubtasks] = useState([]);
-    const [newSubtask, setNewSubtask] = useState('');
-
-    const [newGroupName, setNewGroupName] = useState('');
-    const [newGroupColor, setNewGroupColor] = useState('#ff00bb');
-
-    useEffect(() => {
-        if (isOpen) {
-            dispatch(fetchGroups());
-        }
-    }, [isOpen, dispatch]);
+    const [draft, setDraft] = useState('');
+    const [newGroup, setNewGroup] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        if (groups.length > 0 && !selectedGroupId) {
-            setSelectedGroupId(groups[0]._id);
+        dispatch(fetchGroups());
+    }, [dispatch]);
+
+    const selectedGroup = groupId || groups[0]?._id || '';
+
+    const addSubtask = () => {
+        const t = draft.trim();
+        if (!t) return;
+        setSubtasks((list) => [...list, t]);
+        setDraft('');
+    };
+
+    const saveGroup = async () => {
+        const name = newGroup.name.trim();
+        if (!name) return;
+        try {
+            const created = await dispatch(createGroup({ name, color: newGroup.color })).unwrap();
+            setGroupId(created._id);
+            setNewGroup(null);
+            toast.success(`Group “${name}” created`);
+        } catch (err) {
+            toast.error(err?.message || "Couldn't create that group.");
         }
-    }, [groups, selectedGroupId]);
+    };
 
-    if (!isOpen) return null;
-
-    const handleAddGroup = async () => {
-        if (!newGroupName.trim()) return;
-        const result = await dispatch(createGroup({
-            name: newGroupName,
-            color: newGroupColor
-        }));
-
-        if (result.payload) {
-            setNewGroupName('');
-            setSelectedGroupId(result.payload._id);
+    const submit = async (e) => {
+        e.preventDefault();
+        if (!title.trim()) return setError('Give the task a title.');
+        setSaving(true);
+        try {
+            await onCreate({
+                taskTitle: title.trim(),
+                selectedGroupId: selectedGroup || null,
+                category,
+                subtasks: draft.trim() ? [...subtasks, draft.trim()] : subtasks,
+            });
+        } finally {
+            setSaving(false);
         }
-    }
-
-    const handleAddSubtask = () =>{
-        if(newSubtask.trim()) {
-            setSubtasks([...subtasks, newSubtask]);
-            setNewSubtask('');
-        }
-    }
-
-    const removeSubtask = (index) => {
-        setSubtasks(subtasks.filter((_, i) => i != index));
-    }
+    };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-content">
-                <header className="modal-header">
-                    <div className="modal-logo"><img src={Logo} style={{height: '2.5rem'}}/> <h2>Create New Task</h2> </div>
-                    <button className="close-btn" onClick={onClose}><X size={20} strokeWidth={2} /></button>
-                </header>
-
-                {groupsLoading ? (
-                    <div className="modal-loader-body">
-                        <BeatLoader color="#3b82f6" />
-                    </div>
-                ) : (
-                    <div className="modal-body">
-                        <div className="form-group">
-                            <label>Task Title</label>
-                            <input
-                                type="text"
-                                placeholder="e.g., Start Node Dev Course"
-                                value={taskTitle}
-                                onChange={(e) => setTaskTitle(e.target.value)}
-                            />
-                        </div>
-
-                        <div className="group-row">
-                            <div className="form-group flex-2">
-                                <label>Select Group</label>
-                                <select 
-                                    value={selectedGroupId} 
-                                    onChange={(e) => setSelectedGroupId(e.target.value)}
-                                >
-                                    {groups.map(g => (
-                                        <option key={g._id} value={g._id}>{g.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="form-group flex-2">
-                                <label>New Group Name:</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="e.g. Marketing" 
-                                    value={newGroupName}
-                                    onChange={(e) => setNewGroupName(e.target.value)}
-                                />
-                            </div>
-                            <div className="form-group flex-1">
-                                <label>Color:</label>
-                                <div className="color-picker-wrapper">
-                                    <input 
-                                        type="color" 
-                                        value={newGroupColor} 
-                                        onChange={(e) => setNewGroupColor(e.target.value)} 
-                                    />
-                                    <button className="add-group-btn" onClick={handleAddGroup}>Add Group</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="form-group">
-                            <label>Category</label>
-                            <div className="category-options">
-                                {[
-                                    { id: 'General', icon: <Hash size={14} /> },
-                                    { id: 'Practice', icon: <Code size={14} /> },
-                                    { id: 'Read', icon: <BookOpen size={14} /> },
-                                    { id: 'Watch', icon: <PlayCircle size={14} /> },
-                                    { id: 'Note', icon: <FileText size={14} /> }
-                                ].map((cat) => (
-                                    <button 
-                                        key={cat.id}
-                                        className={`cat-btn ${category === cat.id ? 'active' : ''}`}
-                                        onClick={() => setCategory(cat.id)}
-                                    >
-                                        {cat.icon} {cat.id}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="form-group">
-                            <label>Subtasks</label>
-                            <div className="subtasks-list">
-                                {subtasks.map((st, index) => (
-                                    <div key={index} className="subtask-item">
-                                        <input type="text" defaultValue={st} readOnly />
-                                        <button onClick={() => removeSubtask(index)}><X size={14} /></button>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="add-subtask-row">
-                                <input 
-                                    type="text"
-                                    placeholder="e.g., add subtask"
-                                    value={newSubtask}
-                                    onChange={(e) => setNewSubtask(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            handleAddSubtask();
-                                        }
-                                    }}
-                                />
-                                <button className="inline-add-btn" onClick={handleAddSubtask}>Add Subtask</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <footer className="modal-footer">
-                    <button className="cancel-btn" onClick={onClose}>Cancel</button>
-                    <button className="create-btn" onClick={() => onCreate({ taskTitle, selectedGroupId, category, subtasks })}>
-                        Create Task
+        <Modal
+            isOpen
+            onClose={onClose}
+            title="New task"
+            subtitle="Something to watch, read or practise. Break it into subtasks to track progress."
+            width={560}
+            footer={(
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+                    <button type="submit" form="create-task-form" className="btn btn-primary" disabled={saving}>
+                        {saving ? 'Creating…' : 'Create task'}
                     </button>
-                </footer>
-            </div>
-        </div>
+                </>
+            )}
+        >
+            <form id="create-task-form" className="pm-form" onSubmit={submit} noValidate>
+                <label className="field">
+                    <span className="field-label">Title</span>
+                    <input
+                        className="input"
+                        value={title}
+                        maxLength={200}
+                        placeholder="e.g. Start the Node.js course"
+                        aria-invalid={!!error}
+                        onChange={(e) => { setTitle(e.target.value); setError(''); }}
+                    />
+                    {error && <span className="pm-error">{error}</span>}
+                </label>
+
+                <div className="field">
+                    <div className="ct-label-row">
+                        <label className="field-label" htmlFor="ct-group">Group</label>
+                        {!newGroup && (
+                            <button type="button" className="ct-link" onClick={() => setNewGroup({ name: '', color: IDENTITY_PALETTE[groups.length % IDENTITY_PALETTE.length] })}>
+                                <Plus size={14} aria-hidden="true" /> New group
+                            </button>
+                        )}
+                    </div>
+                    {newGroup ? (
+                        <div className="ct-new-group">
+                            <input
+                                className="input"
+                                aria-label="New group name"
+                                placeholder="e.g. React Native"
+                                maxLength={60}
+                                value={newGroup.name}
+                                autoFocus
+                                onChange={(e) => setNewGroup((g) => ({ ...g, name: e.target.value }))}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.preventDefault(); saveGroup(); }
+                                }}
+                            />
+                            <div className="ct-swatches" role="radiogroup" aria-label="Group colour">
+                                {IDENTITY_PALETTE.map((c) => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={newGroup.color === c}
+                                        aria-label={c}
+                                        className="ct-swatch"
+                                        style={{ background: c }}
+                                        onClick={() => setNewGroup((g) => ({ ...g, color: c }))}
+                                    />
+                                ))}
+                            </div>
+                            <div className="ct-new-group-actions">
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setNewGroup(null)}>Cancel</button>
+                                <button type="button" className="btn btn-sm btn-primary" onClick={saveGroup} disabled={!newGroup.name.trim()}>Add group</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <select id="ct-group" className="input" value={selectedGroup} onChange={(e) => setGroupId(e.target.value)}>
+                            {groups.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+                            <option value="">Uncategorized</option>
+                        </select>
+                    )}
+                </div>
+
+                <fieldset className="ct-fieldset">
+                    <legend className="field-label">Category</legend>
+                    <div className="ct-cats">
+                        {CATEGORIES.map((cat) => (
+                            <button key={cat.id} type="button" className="ct-cat" aria-pressed={category === cat.id} onClick={() => setCategory(cat.id)}>
+                                <cat.icon size={14} aria-hidden="true" /> {cat.id}
+                            </button>
+                        ))}
+                    </div>
+                </fieldset>
+
+                <div className="field">
+                    <span className="field-label">Subtasks <span className="muted">(optional)</span></span>
+                    {subtasks.length > 0 && (
+                        <ul className="ct-subs">
+                            {subtasks.map((s, i) => (
+                                <li key={`${s}-${i}`}>
+                                    <span>{s}</span>
+                                    <button type="button" className="icon-btn ct-sub-remove" aria-label={`Remove ${s}`} onClick={() => setSubtasks((list) => list.filter((_, j) => j !== i))}>
+                                        <X size={14} />
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    <div className="ct-sub-add">
+                        <input
+                            className="input"
+                            aria-label="New subtask"
+                            placeholder="Add a step and press Enter"
+                            value={draft}
+                            maxLength={200}
+                            onChange={(e) => setDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') { e.preventDefault(); addSubtask(); }
+                            }}
+                        />
+                        <button type="button" className="btn" onClick={addSubtask} disabled={!draft.trim()}>Add</button>
+                    </div>
+                </div>
+            </form>
+        </Modal>
     );
-}
+};
 
 export default CreateTaskModal;

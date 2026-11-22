@@ -1,415 +1,309 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { BarLoader } from 'react-spinners';
-import {
-    fetchTaskById,
-    clearCurrentTask,
-    updateTaskAction,
-    deleteTask
-} from '../../store/slices/taskSlice';
-import ScheduleTaskModal from '../../components/modals/Scheduler/SchedulerModal';
-import {
-    Calendar, Settings, ListTodo,
-    Trash2, PlayCircle, Edit3, Upload, X, CheckCircle2, AlertCircle
-} from 'lucide-react';
-import './taskdetails.css';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import toast from 'react-hot-toast';
+import { CalendarPlus, ChevronRight, Pencil, Play, Trash2 } from 'lucide-react';
+import { clearCurrentTask, deleteTask, fetchTaskById, updateTaskAction } from '../../store/slices/taskSlice';
+import { fetchGroups } from '../../store/slices/groupSlice';
+import Menu from '../../components/ui/Menu';
+import Modal from '../../components/ui/Modal';
+import EmptyState from '../../components/ui/EmptyState';
+import StatusPill from '../../components/ui/StatusPill';
+import AddToPlanModal from '../../components/modals/Project/AddToPlanModal';
+import FocusSessionFlow from '../../components/session/FocusSessionFlow';
+import { colorFor, UNCATEGORIZED_COLOR } from '../../utils/Colors';
+import { taskProgress } from '../../utils/Status';
+import SubtaskList from './SubtaskList';
+import SubtaskImport from './SubtaskImport';
+import './TaskDetails.css';
+
+const STATUSES = [
+    { value: 'Not Started', label: 'Not started' },
+    { value: 'On-Going', label: 'In progress' },
+    { value: 'On-Hold', label: 'On hold' },
+    { value: 'Completed', label: 'Done' },
+    { value: 'Shelved', label: 'Shelved' },
+];
+const CATEGORIES = ['General', 'Watch', 'Read', 'Practice', 'Note', 'Project'];
+const RING = 2 * Math.PI * 52;
+
+const formatDate = (value) => (value
+    ? new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—');
+
+const TitleEditor = ({ title, onSave, onCancel }) => {
+    const [value, setValue] = useState(title);
+    const commit = () => {
+        const next = value.trim();
+        if (next && next !== title) onSave(next);
+        else onCancel();
+    };
+    return (
+        <input
+            className="td-title-input"
+            aria-label="Task title"
+            value={value}
+            autoFocus
+            maxLength={200}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') onCancel();
+            }}
+        />
+    );
+};
+
+const DescriptionEditor = ({ initial, onSave }) => {
+    const [value, setValue] = useState(initial);
+    return (
+        <textarea
+            className="input td-desc"
+            aria-label="Description"
+            placeholder="Add notes, links or what “done” looks like…"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={() => value !== initial && onSave(value)}
+        />
+    );
+};
 
 const TaskDetails = () => {
     const { id } = useParams();
     const dispatch = useDispatch();
-    const navigate = useNavigate(); // For redirecting after delete
-
-    const { currentTask: task, detailsLoading } = useSelector((state) => state.tasks);
-
-    const [descInput, setDescInput] = useState("");
-    const [newSubtask, setNewSubtask] = useState("");
-    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-    const [selectedItemForSchedule, setSelectedItemForSchedule] = useState(null);
-
-    // CSV import state
-    const [csvPreview, setCsvPreview]     = useState([]);   // parsed titles ready to import
-    const [csvError, setCsvError]         = useState('');   // parse/validation message
-    const [csvFileName, setCsvFileName]   = useState('');   // display name
-    const [isDragOver, setIsDragOver]     = useState(false);
-    const csvInputRef = useRef(null);
-
-    // Dropdown State
-    const [showSettings, setShowSettings] = useState(false);
-    const settingsRef = useRef(null);
+    const navigate = useNavigate();
+    const task = useSelector((s) => s.tasks.currentTask);
+    const groups = useSelector((s) => s.groups.list);
+    const [missing, setMissing] = useState(null);
+    const [renaming, setRenaming] = useState(false);
+    const [planTarget, setPlanTarget] = useState(null);
+    const [sessionOpen, setSessionOpen] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
-        dispatch(fetchTaskById(id));
+        dispatch(fetchTaskById(id)).unwrap().catch(() => setMissing(id));
+        dispatch(fetchGroups());
         return () => dispatch(clearCurrentTask());
     }, [dispatch, id]);
 
-    // Close dropdown when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (settingsRef.current && !settingsRef.current.contains(event.target)) {
-                setShowSettings(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    const loaded = task && task._id === id;
+    const subtasks = useMemo(() => (loaded ? task.subtasks || [] : []), [loaded, task]);
+    const progress = loaded ? taskProgress(task) : 0;
+    const doneCount = subtasks.filter((s) => s.isCompleted).length;
 
-    useEffect(() => {
-        if (task) setDescInput(task.description || "");
-    }, [task]);
-
-    const progressValue = useMemo(() => {
-        if (!task?.subtasks || task.subtasks.length === 0) return 0;
-        const completed = task.subtasks.filter(st => st.isCompleted).length;
-        return Math.round((completed / task.subtasks.length) * 100);
-    }, [task]);
-
-    // Handlers
-    const handleUpdate = (updates) => dispatch(updateTaskAction({ id, updates }));
-
-    const handleDeleteTask = async () => {
-        if (window.confirm("Are you sure you want to delete this task? This action cannot be undone.")) {
-            try {
-                await dispatch(deleteTask(task._id)).unwrap();
-                navigate('/tasks'); // Redirect to inventory
-            } catch (err) {
-                console.error("Failed to delete task:", err);
-                alert("Error deleting task.");
-            }
+    const update = async (updates, success) => {
+        try {
+            await dispatch(updateTaskAction({ id, updates })).unwrap();
+            if (success) toast.success(success);
+        } catch (err) {
+            toast.error(err?.message || "Couldn't save that change.");
+            dispatch(fetchTaskById(id));
         }
     };
 
-    const handleDeleteSubtask = (stId) => {
-        if (window.confirm("Are you sure you want to remove this subtask?")) {
-            const updatedSubtasks = task.subtasks.filter(st => st._id !== stId);
-            handleUpdate({ subtasks: updatedSubtasks });
+    const removeSubtask = (index) => {
+        const previous = subtasks;
+        const removed = previous[index];
+        update({ subtasks: previous.filter((_, i) => i !== index) });
+        toast((t) => (
+            <span className="td-toast">
+                Deleted “{removed.title}”
+                <button type="button" onClick={() => { toast.dismiss(t.id); update({ subtasks: previous }); }}>Undo</button>
+            </span>
+        ), { duration: 5000 });
+    };
+
+    const remove = async () => {
+        setDeleting(true);
+        try {
+            await dispatch(deleteTask(id)).unwrap();
+            toast.success('Task deleted');
+            navigate('/tasks');
+        } catch {
+            toast.error("Couldn't delete this task.");
+            setDeleting(false);
         }
     };
 
-    const handleAddSubtask = () => {
-        if (!newSubtask.trim()) return;
-        const updatedSubtasks = [...task.subtasks, { title: newSubtask, isCompleted: false }];
-        handleUpdate({ subtasks: updatedSubtasks });
-        setNewSubtask("");
-    };
-
-    const handleToggleSubtask = (stId) => {
-        const updatedSubtasks = task.subtasks.map(s =>
-            s._id === stId
-                ? { ...s, isCompleted: !s.isCompleted, status: !s.isCompleted ? 'Completed' : 'Not Started' }
-                : s
+    if (missing === id) {
+        return (
+            <div className="page">
+                <div className="page-inner">
+                    <EmptyState
+                        title="Task not found"
+                        help="It may have been deleted, or the link is wrong."
+                        action={<Link to="/tasks" className="btn btn-primary">Back to Tasks</Link>}
+                    />
+                </div>
+            </div>
         );
-        handleUpdate({ subtasks: updatedSubtasks });
-    };
+    }
 
-    const openScheduler = (item = task) => {
-        const itemWithContext = item._id === task._id
-            ? item
-            : { ...item, parentId: task._id, category: task.category, groupId: task.groupId };
-
-        setSelectedItemForSchedule(itemWithContext);
-        setIsScheduleModalOpen(true);
-    };
-
-    // ── CSV helpers ──────────────────────────────────────────────
-    const parseCSV = (text) => {
-        const existingTitles = new Set(
-            (task.subtasks || []).map(s => s.title.trim().toLowerCase())
+    if (!loaded) {
+        return (
+            <div className="page" aria-busy="true">
+                <div className="page-inner">
+                    <div className="skeleton td-skel-head" />
+                    <div className="td-layout">
+                        <div className="skeleton td-skel-main" />
+                        <div className="skeleton td-skel-side" />
+                    </div>
+                </div>
+            </div>
         );
+    }
 
-        const lines = text
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(Boolean);
-
-        // Skip a header row if every value in the first line looks like a label
-        // (i.e. no numbers, short words — heuristic: if the first row has all
-        //  alpha-only tokens and more than one column, treat it as a header)
-        let dataLines = lines;
-        if (lines.length > 1) {
-            const firstCells = lines[0].split(',');
-            const looksLikeHeader = firstCells.every(c =>
-                /^["']?[a-zA-Z\s_-]+["']?$/.test(c.trim())
-            );
-            if (looksLikeHeader && firstCells.length > 1) {
-                dataLines = lines.slice(1);
-            }
-        }
-
-        const titles = dataLines
-            .map(line => {
-                // Take the first column; strip surrounding quotes
-                const firstCol = line.split(',')[0].replace(/^["']|["']$/g, '').trim();
-                return firstCol;
-            })
-            .filter(t => t.length > 0 && t.length <= 200)
-            .filter(t => !existingTitles.has(t.toLowerCase())); // skip duplicates
-
-        return [...new Set(titles)]; // deduplicate within the file itself
-    };
-
-    const handleCSVFile = (file) => {
-        setCsvError('');
-        setCsvPreview([]);
-
-        if (!file) return;
-
-        if (!file.name.toLowerCase().endsWith('.csv')) {
-            setCsvError('Only .csv files are supported.');
-            return;
-        }
-        if (file.size > 500 * 1024) {
-            setCsvError('File is too large. Maximum size is 500 KB.');
-            return;
-        }
-
-        setCsvFileName(file.name);
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target.result;
-            const titles = parseCSV(text);
-
-            if (titles.length === 0) {
-                setCsvError('No new subtask titles found. The file may be empty, already imported, or contain invalid data.');
-                return;
-            }
-            setCsvPreview(titles);
-        };
-        reader.onerror = () => setCsvError('Failed to read the file.');
-        reader.readAsText(file);
-    };
-
-    const handleCSVInputChange = (e) => handleCSVFile(e.target.files?.[0]);
-
-    const handleDrop = (e) => {
-        e.preventDefault();
-        setIsDragOver(false);
-        handleCSVFile(e.dataTransfer.files?.[0]);
-    };
-
-    const handleConfirmImport = () => {
-        if (csvPreview.length === 0) return;
-        const newSubtasks = csvPreview.map(title => ({ title, isCompleted: false }));
-        const merged = [...(task.subtasks || []), ...newSubtasks];
-        handleUpdate({ subtasks: merged });
-        setCsvPreview([]);
-        setCsvFileName('');
-        if (csvInputRef.current) csvInputRef.current.value = '';
-    };
-
-    const handleCancelImport = () => {
-        setCsvPreview([]);
-        setCsvFileName('');
-        setCsvError('');
-        if (csvInputRef.current) csvInputRef.current.value = '';
-    };
-    // ─────────────────────────────────────────────────────────────
-
-    if (detailsLoading || !task) return <div className="details-loader-container"><BarLoader color="#3b82f6" /><p>Syncing...</p></div>;
+    const group = task.groupId && typeof task.groupId === 'object' ? task.groupId : null;
+    const groupColor = group ? colorFor(group) : UNCATEGORIZED_COLOR;
 
     return (
-        <div className="task-details-container">
-            <header className="task-header">
-                <div className="task-title-area">
-                    <div className={`category-icon-large ${task.category.toLowerCase()}`}>
-                        <PlayCircle size={24} color="white" />
-                    </div>
-                    <h1>{task.title}</h1>
-                </div>
-                <div className="header-actions">
-                    <button className="btn-add-schedule" onClick={() => openScheduler()}>
-                        <Calendar size={18} /> Add to Schedule
-                    </button>
+        <div className="page">
+            <div className="page-inner">
+                <nav aria-label="Breadcrumb" className="td-crumbs">
+                    <Link to="/tasks">Tasks</Link>
+                    <ChevronRight size={14} aria-hidden="true" />
+                    <span>{group?.name || 'Uncategorized'}</span>
+                </nav>
 
-                    {/* Settings Dropdown */}
-                    <div className="settings-menu-container" ref={settingsRef}>
-                        <button
-                            className={`btn-icon-settings ${showSettings ? 'active' : ''}`}
-                            onClick={() => setShowSettings(!showSettings)}
-                        >
-                            <Settings size={18} />
-                        </button>
-
-                        {showSettings && (
-                            <div className="settings-dropdown">
-                                <button className="dropdown-item" onClick={() => {/* Add Edit Logic */}}>
-                                    <Edit3 size={14} /> Edit Task
-                                </button>
-                                <button className="dropdown-item delete" onClick={handleDeleteTask}>
-                                    <Trash2 size={14} /> Delete Task
-                                </button>
-                            </div>
+                <header className="td-header">
+                    <span className="td-badge" style={{ background: groupColor }} aria-hidden="true">
+                        {(task.title || '?').charAt(0).toUpperCase()}
+                    </span>
+                    <div className="td-heading">
+                        {renaming ? (
+                            <TitleEditor
+                                title={task.title}
+                                onCancel={() => setRenaming(false)}
+                                onSave={(title) => {
+                                    setRenaming(false);
+                                    update({ title });
+                                }}
+                            />
+                        ) : (
+                            <h1>{task.title}</h1>
                         )}
+                        <div className="td-meta">
+                            <StatusPill status={task.status} />
+                            <span>{task.category}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{subtasks.length ? `${doneCount} of ${subtasks.length} subtasks done` : 'No subtasks'}</span>
+                        </div>
                     </div>
-                </div>
-            </header>
-
-            <div className="task-content-grid">
-                <section className="main-info-panel">
-                    <div className="task-input-group">
-                        <label>Description:</label>
-                        <textarea
-                            value={descInput}
-                            onChange={(e) => setDescInput(e.target.value)}
-                            onBlur={() => handleUpdate({ description: descInput })}
-                            onKeyDown={(e) => e.key === 'Enter' && handleUpdate({ description: descInput })}
-                            placeholder="Add a description..."
+                    <div className="td-actions">
+                        <button type="button" className="btn" onClick={() => setPlanTarget({ subtask: null })}>
+                            <CalendarPlus size={16} aria-hidden="true" /> Add to plan
+                        </button>
+                        <button type="button" className="btn btn-primary" onClick={() => setSessionOpen(true)} disabled={task.status === 'Completed'}>
+                            <Play size={14} fill="currentColor" aria-hidden="true" /> Start a session
+                        </button>
+                        <Menu
+                            label="Task actions"
+                            items={[
+                                { label: 'Rename', icon: <Pencil size={16} />, onSelect: () => setRenaming(true) },
+                                { label: 'Delete task', icon: <Trash2 size={16} />, danger: true, onSelect: () => setConfirmDelete(true) },
+                            ]}
                         />
                     </div>
+                </header>
 
-                    <div className="subtasks-section">
-                        <label>Subtasks: {task.subtasks?.length || 0}</label>
-                        <div className="subtasks-container">
-                            {task.subtasks?.map((st, index) => (
-                                <div
-                                    key={st._id || index}
-                                    className={`detail-subtask-item ${st.isCompleted ? 'completed' : ''}`}
-                                >
-                                    <div className="subtask-left">
-                                        <label
-                                            className="subtask-toggle"
-                                            title={st.isCompleted ? 'Mark as incomplete' : 'Mark as complete'}
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={!!st.isCompleted}
-                                                onChange={() => handleToggleSubtask(st._id)}
-                                            />
-                                            <span className="subtask-toggle-slider" />
-                                        </label>
-                                        <ListTodo size={16} color="#94a3b8" />
-                                        <input
-                                            className="subtask-edit-input"
-                                            defaultValue={st.title}
-                                            onBlur={(e) => {
-                                                const updated = task.subtasks.map(s => s._id === st._id ? {...s, title: e.target.value} : s);
-                                                handleUpdate({ subtasks: updated });
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="subtask-right">
-                                        <button className="btn-sub-action" onClick={() => openScheduler(st)}>
-                                            <Calendar size={14} />
-                                        </button>
-                                        <Trash2 size={14} className="btn-sub-action delete" onClick={() => handleDeleteSubtask(st._id)} />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="add-subtask-footer">
-                            <input
-                                type="text"
-                                value={newSubtask}
-                                onChange={(e) => setNewSubtask(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
-                                placeholder="Add new subtask..."
+                <div className="td-layout">
+                    <div className="td-main">
+                        <section className="card td-card" aria-labelledby="td-desc-h">
+                            <h2 id="td-desc-h" className="card-title sm">Description</h2>
+                            <DescriptionEditor key={task._id} initial={task.description || ''} onSave={(description) => update({ description }, 'Description saved')} />
+                        </section>
+
+                        <section className="card td-card" aria-labelledby="td-subs-h">
+                            <div className="td-card-head">
+                                <h2 id="td-subs-h" className="card-title sm">Subtasks</h2>
+                                <span className="td-count">{doneCount} / {subtasks.length}</span>
+                            </div>
+                            <SubtaskList
+                                subtasks={subtasks}
+                                onChange={(next) => update({ subtasks: next })}
+                                onPlan={(subtask) => setPlanTarget({ subtask })}
+                                onDelete={removeSubtask}
                             />
-                            <button onClick={handleAddSubtask} className="btn-add-subtask">Add Subtask</button>
-                        </div>
-
-                        {/* ── CSV import ── */}
-                        {csvPreview.length === 0 ? (
-                            <div
-                                className={`csv-drop-zone ${isDragOver ? 'drag-over' : ''}`}
-                                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                                onDragLeave={() => setIsDragOver(false)}
-                                onDrop={handleDrop}
-                                onClick={() => csvInputRef.current?.click()}
-                            >
-                                <Upload size={16} />
-                                <span>
-                                    {csvFileName
-                                        ? csvFileName
-                                        : 'Import subtasks from CSV — click or drag & drop'}
-                                </span>
-                                <input
-                                    ref={csvInputRef}
-                                    type="file"
-                                    accept=".csv"
-                                    style={{ display: 'none' }}
-                                    onChange={handleCSVInputChange}
-                                />
-                            </div>
-                        ) : (
-                            <div className="csv-preview-panel">
-                                <div className="csv-preview-header">
-                                    <span className="csv-preview-title">
-                                        <CheckCircle2 size={14} />
-                                        {csvPreview.length} subtask{csvPreview.length !== 1 ? 's' : ''} ready to import
-                                    </span>
-                                    <button className="csv-cancel-btn" onClick={handleCancelImport}>
-                                        <X size={14} />
-                                    </button>
-                                </div>
-                                <ul className="csv-preview-list">
-                                    {csvPreview.slice(0, 8).map((title, i) => (
-                                        <li key={i} className="csv-preview-item">
-                                            <ListTodo size={12} />
-                                            <span>{title}</span>
-                                        </li>
-                                    ))}
-                                    {csvPreview.length > 8 && (
-                                        <li className="csv-preview-more">
-                                            +{csvPreview.length - 8} more
-                                        </li>
-                                    )}
-                                </ul>
-                                <button className="csv-confirm-btn" onClick={handleConfirmImport}>
-                                    <Upload size={14} /> Add {csvPreview.length} Subtasks
-                                </button>
-                            </div>
-                        )}
-
-                        {csvError && (
-                            <div className="csv-error-msg">
-                                <AlertCircle size={13} /> {csvError}
-                            </div>
-                        )}
-                    </div>
-                </section>
-
-                <aside className="metadata-sidebar">
-                    {/* ... rest of your sidebar code ... */}
-                    <div className="meta-list">
-                        <div className="meta-item">
-                            <div className="meta-label"><PlayCircle size={16}/> Status:</div>
-                            <select
-                                className={`meta-select-badge ${task.status.replace(/\s+/g, '-').toLowerCase()}`}
-                                value={task.status}
-                                onChange={(e) => handleUpdate({ status: e.target.value })}
-                            >
-                                <option value="Not Started">Not Started</option>
-                                <option value="On-Going">On-Going</option>
-                                <option value="Completed">Completed</option>
-                                <option value="Shelved">Shelved</option>
-                            </select>
-                        </div>
-                        {/* ... other meta items ... */}
+                            <SubtaskImport
+                                subtasks={subtasks}
+                                onImport={(titles) => update(
+                                    { subtasks: [...subtasks, ...titles.map((title) => ({ title, isCompleted: false }))] },
+                                    `Added ${titles.length} ${titles.length === 1 ? 'subtask' : 'subtasks'}`,
+                                )}
+                            />
+                        </section>
                     </div>
 
-                    <div className="progress-card">
-                        <label>Progress:</label>
-                        <div className="circular-progress">
-                            <svg viewBox="0 0 36 36" className="circular-chart">
-                                <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                                <path
-                                    className="circle"
-                                    strokeDasharray={`${progressValue}, 100`}
-                                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                />
-                                <text x="18" y="20.35" className="percentage">{progressValue}%</text>
-                            </svg>
-                        </div>
-                    </div>
-                </aside>
+                    <aside className="td-side">
+                        <section className="card td-card" aria-labelledby="td-prog-h">
+                            <h2 id="td-prog-h" className="card-title sm">Progress</h2>
+                            <div className="td-ring">
+                                <svg width="132" height="132" viewBox="0 0 132 132" role="img" aria-label={`${progress} percent complete`}>
+                                    <circle cx="66" cy="66" r="52" fill="none" strokeWidth="12" className="td-ring-track" />
+                                    <circle
+                                        cx="66" cy="66" r="52" fill="none" strokeWidth="12" strokeLinecap="round" className="td-ring-fill"
+                                        strokeDasharray={RING} strokeDashoffset={RING * (1 - progress / 100)} transform="rotate(-90 66 66)"
+                                    />
+                                    <text x="66" y="72" textAnchor="middle" className="td-ring-pct">{progress}%</text>
+                                </svg>
+                            </div>
+                            <p className="td-ring-note">
+                                {subtasks.length ? 'Based on completed subtasks.' : 'Add subtasks to track progress step by step.'}
+                            </p>
+                        </section>
+
+                        <section className="card td-card" aria-labelledby="td-det-h">
+                            <h2 id="td-det-h" className="card-title sm">Details</h2>
+                            <label className="field">
+                                <span className="field-label">Status</span>
+                                <select className="input" value={task.status} onChange={(e) => update({ status: e.target.value })}>
+                                    {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                                </select>
+                            </label>
+                            <label className="field">
+                                <span className="field-label">Group</span>
+                                <select className="input" value={group?._id || ''} onChange={(e) => update({ groupId: e.target.value || null }, 'Group updated')}>
+                                    <option value="">Uncategorized</option>
+                                    {groups.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+                                </select>
+                            </label>
+                            <label className="field">
+                                <span className="field-label">Category</span>
+                                <select className="input" value={task.category} onChange={(e) => update({ category: e.target.value })}>
+                                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </label>
+                            <dl className="td-facts">
+                                <div><dt>Created</dt><dd>{formatDate(task.createdAt)}</dd></div>
+                                <div><dt>Last updated</dt><dd>{formatDate(task.updatedAt)}</dd></div>
+                            </dl>
+                        </section>
+                    </aside>
+                </div>
             </div>
 
-            <ScheduleTaskModal
-                isOpen={isScheduleModalOpen}
-                onClose={() => setIsScheduleModalOpen(false)}
-                task={selectedItemForSchedule}
+            <AddToPlanModal
+                isOpen={Boolean(planTarget)}
+                onClose={() => setPlanTarget(null)}
+                task={task}
+                subtask={planTarget?.subtask}
+                taskType="task"
+            />
+            <FocusSessionFlow isOpen={sessionOpen} task={task} onClose={() => setSessionOpen(false)} onSaved={() => dispatch(fetchTaskById(id))} />
+            <Modal
+                isOpen={confirmDelete}
+                onClose={() => setConfirmDelete(false)}
+                title="Delete this task?"
+                subtitle={`“${task.title}” and its ${subtasks.length} ${subtasks.length === 1 ? 'subtask' : 'subtasks'} will be removed. This can't be undone.`}
+                width={440}
+                footer={(
+                    <>
+                        <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(false)}>Keep it</button>
+                        <button type="button" className="btn btn-danger" onClick={remove} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete task'}</button>
+                    </>
+                )}
             />
         </div>
     );

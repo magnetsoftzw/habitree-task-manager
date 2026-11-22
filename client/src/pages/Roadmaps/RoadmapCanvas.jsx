@@ -1,532 +1,438 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
+import toast from 'react-hot-toast';
 import ReactFlow, {
-    Background,
-    Controls,
-    MiniMap,
-    addEdge,
-    useNodesState,
-    useEdgesState,
-    MarkerType,
-    Handle,
-    Position,
+    Background, MarkerType, MiniMap, ReactFlowProvider, addEdge, useEdgesState, useNodesState, useReactFlow, useViewport,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { BarLoader } from 'react-spinners';
 import {
-    ArrowLeft, Settings, Save, Plus, Trash2,
-    Edit3, CheckCircle, AlertTriangle, Search
+    AlertCircle, ArrowLeft, Check, LayoutGrid, Maximize, Minus, MousePointerClick, Pencil, Play, Plus, Route, Trash2,
 } from 'lucide-react';
-import {
-    fetchRoadmapById,
-    saveRoadmapCanvas,
-    updateRoadmapMeta,
-    deleteRoadmap,
-    clearActiveRoadmap,
-} from '../../store/slices/roadmapSlice';
-import { fetchInventoryTasks } from '../../store/slices/taskSlice';
+import RoadmapNode from '../../components/roadmap/RoadmapNode';
+import Menu from '../../components/ui/Menu';
+import EmptyState from '../../components/ui/EmptyState';
+import AddBlockModal from '../../components/modals/Planner/AddBlockModal';
 import CreateRoadmap from '../../components/modals/Roadmap/CreateRoadmap';
-import './roadmapCanvas.css';
+import FocusSessionFlow from '../../components/session/FocusSessionFlow';
+import {
+    clearActiveRoadmap, deleteRoadmap, fetchRoadmapById, persistRoadmap, updateRoadmapMeta,
+} from '../../store/slices/roadmapSlice';
+import { fetchInventoryTasks, updateTaskStatus } from '../../store/slices/taskSlice';
+import { roadmapProgress } from '../../utils/Roadmap';
+import { formatDueDate, toDateKey } from '../../utils/Format';
+import './RoadmapCanvas.css';
 
-/* ── Detect mobile ── */
-const isMobile = () => window.innerWidth <= 768;
+const nodeTypes = { taskNode: RoadmapNode };
+const NODE_W = 280;
+const EDGE_OPTIONS = {
+    type: 'smoothstep',
+    style: { strokeWidth: 2 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#9AA39C' },
+};
+const STATUSES = ['Not Started', 'On-Going', 'On-Hold', 'Completed', 'Shelved'];
+const STATUS_LABEL = { 'Not Started': 'Not started', 'On-Going': 'In progress', 'On-Hold': 'On hold', Completed: 'Done', Shelved: 'Shelved' };
 
-/* ── Status helpers ── */
-const STATUS_CLASS = {
-    'Completed':  'completed',
-    'On-Going':   'on-going',
-    'Shelved':    'shelved',
-    'Not Started':'not-started',
+const toFlowNode = (n) => ({
+    id: n.id,
+    type: 'taskNode',
+    position: n.position || { x: 0, y: 0 },
+    data: { label: n.data?.label, status: n.data?.status, progress: n.data?.progress },
+});
+
+const toFlowEdge = (e) => ({ id: e.id, source: e.source, target: e.target, ...EDGE_OPTIONS });
+
+const layered = (nodes, edges) => {
+    const depth = new Map(nodes.map((n) => [n.id, 0]));
+    for (let pass = 0; pass < nodes.length; pass += 1) {
+        let changed = false;
+        edges.forEach((e) => {
+            const next = (depth.get(e.source) ?? 0) + 1;
+            if (depth.has(e.target) && next > depth.get(e.target) && next < nodes.length) {
+                depth.set(e.target, next);
+                changed = true;
+            }
+        });
+        if (!changed) break;
+    }
+    const rows = new Map();
+    nodes.forEach((n) => {
+        const d = depth.get(n.id);
+        rows.set(d, [...(rows.get(d) || []), n.id]);
+    });
+    const pos = new Map();
+    rows.forEach((ids, d) => ids.forEach((id, i) => pos.set(id, { x: 96 + i * (NODE_W + 60), y: 120 + d * 220 })));
+    return nodes.map((n) => ({ ...n, position: pos.get(n.id) }));
 };
 
-const PROGRESS_COLOR = (pct) => {
-    if (pct >= 100) return '#22c55e';
-    if (pct >= 50)  return '#3b82f6';
-    if (pct > 0)    return '#f59e0b';
-    return '#e2e8f0';
+const SaveState = ({ state, onRetry }) => {
+    if (state === 'saving') return <span className="rm-save">Saving…</span>;
+    if (state === 'error') {
+        return (
+            <span className="rm-save is-error">
+                <AlertCircle size={14} aria-hidden="true" /> Couldn't save
+                <button type="button" className="rm-save-retry" onClick={onRetry}>Retry</button>
+            </span>
+        );
+    }
+    return <span className="rm-save"><Check size={14} strokeWidth={2.4} className="rm-save-ok" aria-hidden="true" /> All changes saved</span>;
 };
 
-/* ── Custom Task Node ── */
-const TaskNode = ({ data, selected, isConnectable }) => {
-    const statusClass = STATUS_CLASS[data.status] || 'not-started';
-    const isComplete  = data.status === 'Completed';
-    const progress    = data.progress || 0;
+const Editor = ({ roadmap }) => {
+    const dispatch = useDispatch();
+    const navigate = useNavigate();
+    const flow = useReactFlow();
+    const { zoom } = useViewport();
+    const inventory = useSelector((s) => s.tasks.inventory);
+    const wrapRef = useRef(null);
+    const saveTimer = useRef(null);
+
+    const [nodes, setNodes, onNodesChange] = useNodesState(() => (roadmap.nodes || []).map(toFlowNode));
+    const [edges, setEdges, onEdgesChange] = useEdgesState(() => (roadmap.edges || []).map(toFlowEdge));
+    const [selectedId, setSelectedId] = useState(null);
+    const [saveState, setSaveState] = useState('saved');
+    const [revision, setRevision] = useState(0);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [renameOpen, setRenameOpen] = useState(false);
+    const [renaming, setRenaming] = useState(false);
+    const [sessionTask, setSessionTask] = useState(null);
+
+    const tasks = useMemo(() => Object.values(inventory || {}).flat(), [inventory]);
+    const taskById = useMemo(() => new Map(tasks.map((t) => [t._id, t])), [tasks]);
+    const tasksLoaded = tasks.length > 0;
+
+    const touch = useCallback(() => setRevision((r) => r + 1), []);
+
+    const save = useCallback(async (currentNodes, currentEdges) => {
+        setSaveState('saving');
+        try {
+            await dispatch(persistRoadmap({
+                id: roadmap._id,
+                nodes: currentNodes.map((n) => {
+                    const t = taskById.get(n.id);
+                    return {
+                        id: n.id,
+                        type: 'taskNode',
+                        position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
+                        data: { label: t?.title || n.data.label, status: t?.status || n.data.status, progress: t?.progress ?? n.data.progress ?? 0 },
+                    };
+                }),
+                edges: currentEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+            })).unwrap();
+            setSaveState('saved');
+        } catch {
+            setSaveState('error');
+        }
+    }, [dispatch, roadmap._id, taskById]);
+
+    const latest = useRef({ nodes, edges, save });
+    useEffect(() => {
+        latest.current = { nodes, edges, save };
+    }, [nodes, edges, save]);
+
+    useEffect(() => {
+        if (!revision) return undefined;
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => latest.current.save(latest.current.nodes, latest.current.edges), 700);
+        return () => clearTimeout(saveTimer.current);
+    }, [revision]);
+
+    const displayNodes = useMemo(() => nodes.map((n) => ({
+        ...n,
+        data: { ...n.data, task: taskById.get(n.id), missing: tasksLoaded && !taskById.has(n.id) },
+    })), [nodes, taskById, tasksLoaded]);
+
+    const displayEdges = useMemo(() => {
+        const name = (id) => taskById.get(id)?.title || nodes.find((n) => n.id === id)?.data.label || 'task';
+        return edges.map((e) => ({ ...e, ariaLabel: `${name(e.source)} leads to ${name(e.target)}` }));
+    }, [edges, nodes, taskById]);
+
+    const onNodesChangeTracked = useCallback((changes) => {
+        onNodesChange(changes);
+        if (changes.some((c) => (c.type === 'position' && c.dragging === false) || c.type === 'remove')) touch();
+    }, [onNodesChange, touch]);
+
+    const onEdgesChangeTracked = useCallback((changes) => {
+        onEdgesChange(changes);
+        if (changes.some((c) => c.type === 'remove')) touch();
+    }, [onEdgesChange, touch]);
+
+    const onConnect = useCallback((params) => {
+        if (params.source === params.target) return;
+        setEdges((eds) => {
+            if (eds.some((e) => e.source === params.source && e.target === params.target)) return eds;
+            return addEdge({ ...params, id: `e-${params.source}-${params.target}`, ...EDGE_OPTIONS }, eds);
+        });
+        touch();
+    }, [setEdges, touch]);
+
+    const addTask = (task) => {
+        setPickerOpen(false);
+        if (!task || nodes.some((n) => n.id === task._id)) return;
+        const rect = wrapRef.current?.getBoundingClientRect();
+        const vp = flow.getViewport();
+        const position = {
+            x: Math.round(((rect?.width || 800) / 2 - vp.x) / vp.zoom - NODE_W / 2 + (nodes.length % 4) * 24),
+            y: Math.round(((rect?.height || 600) / 2 - vp.y) / vp.zoom - 70 + (nodes.length % 4) * 24),
+        };
+        setNodes((nds) => [...nds, { id: task._id, type: 'taskNode', position, data: { label: task.title, status: task.status, progress: task.progress || 0 } }]);
+        setSelectedId(task._id);
+        touch();
+    };
+
+    const removeNode = (id) => {
+        setNodes((nds) => nds.filter((n) => n.id !== id));
+        setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
+        setSelectedId(null);
+        touch();
+    };
+
+    const autoLayout = () => {
+        setNodes((nds) => layered(nds, edges));
+        touch();
+        setTimeout(() => flow.fitView({ padding: 0.25, duration: 300 }), 50);
+    };
+
+    const rename = async ({ skillName }) => {
+        setRenaming(true);
+        try {
+            await dispatch(updateRoadmapMeta({ id: roadmap._id, skillName })).unwrap();
+            setRenameOpen(false);
+        } catch {
+            toast.error('Could not rename the roadmap');
+        } finally {
+            setRenaming(false);
+        }
+    };
+
+    const remove = async () => {
+        if (!window.confirm(`Delete "${roadmap.skillName}"? Its tasks stay on your Tasks page.`)) return;
+        try {
+            await dispatch(deleteRoadmap(roadmap._id)).unwrap();
+            navigate('/roadmaps');
+        } catch {
+            toast.error('Could not delete the roadmap');
+        }
+    };
+
+    const setStatus = async (task, status) => {
+        try {
+            await dispatch(updateTaskStatus({ id: task._id, status })).unwrap();
+            dispatch(fetchInventoryTasks());
+            touch();
+        } catch {
+            toast.error('Could not update the status');
+        }
+    };
+
+    const progressNodes = nodes.map((n) => {
+        const t = taskById.get(n.id);
+        return { id: n.id, data: { status: t?.status || n.data.status, progress: t?.progress ?? n.data.progress } };
+    });
+    const progress = roadmapProgress(progressNodes);
+    const selected = selectedId ? nodes.find((n) => n.id === selectedId) : null;
+    const selTask = selected ? taskById.get(selected.id) : null;
+    const titleOf = (id) => taskById.get(id)?.title || nodes.find((n) => n.id === id)?.data.label || 'Untitled task';
+    const before = selected ? edges.filter((e) => e.target === selected.id).map((e) => titleOf(e.source)) : [];
+    const after = selected ? edges.filter((e) => e.source === selected.id).map((e) => titleOf(e.target)) : [];
+    const overdue = selTask?.scheduledDate && selTask.status !== 'Completed' && toDateKey(new Date(selTask.scheduledDate)) < toDateKey();
+    const available = tasks.filter((t) => !nodes.some((n) => n.id === t._id));
 
     return (
-        <div className={`task-node ${statusClass} ${selected ? 'selected' : ''}`}>
-            {isComplete && (
-                <div className="task-node-complete-badge">
-                    <CheckCircle size={10} color="white" fill="white" />
+        <div className="rm-editor">
+            <header className="rm-toolbar">
+                <Link to="/roadmaps" className="rm-back" aria-label="Back to roadmaps">
+                    <ArrowLeft size={16} />
+                </Link>
+                <div className="rm-toolbar-title">
+                    <h1>{roadmap.skillName}</h1>
+                    <span>
+                        {nodes.length} {nodes.length === 1 ? 'task' : 'tasks'} · {edges.length} {edges.length === 1 ? 'link' : 'links'} · {progress}% complete
+                    </span>
                 </div>
-            )}
+                <SaveState state={saveState} onRetry={() => save(nodes, edges)} />
+                <button type="button" className="btn rm-tool-btn" onClick={autoLayout} disabled={nodes.length < 2}>
+                    <LayoutGrid size={16} aria-hidden="true" /> Auto-layout
+                </button>
+                <button type="button" className="btn btn-primary rm-tool-btn" onClick={() => setPickerOpen(true)}>
+                    <Plus size={16} strokeWidth={2.4} aria-hidden="true" /> Add task
+                </button>
+                <Menu
+                    label="Roadmap options"
+                    items={[
+                        { label: 'Rename', icon: <Pencil size={16} />, onSelect: () => setRenameOpen(true) },
+                        { label: 'Delete roadmap', icon: <Trash2 size={16} />, danger: true, onSelect: remove },
+                    ]}
+                />
+            </header>
 
-            {/* Handles for connecting edges — isConnectable must be forwarded */}
-            <Handle type="target" position={Position.Top} isConnectable={isConnectable} style={{ background: '#94a3b8', width: 8, height: 8 }} />
-            <Handle type="source" position={Position.Bottom} isConnectable={isConnectable} style={{ background: '#94a3b8', width: 8, height: 8 }} />
-
-            <div className="task-node-header">
-                <span className="task-node-title">{data.label || 'Untitled Task'}</span>
-                {!isMobile() && data.onDelete && (
-                    <button
-                        className="task-node-delete-btn"
-                        onClick={(e) => { e.stopPropagation(); data.onDelete(data.id); }}
-                        title="Remove node"
+            <div className="rm-body">
+                <div className="rm-canvas" ref={wrapRef}>
+                    <ReactFlow
+                        nodes={displayNodes}
+                        edges={displayEdges}
+                        nodeTypes={nodeTypes}
+                        onNodesChange={onNodesChangeTracked}
+                        onEdgesChange={onEdgesChangeTracked}
+                        onConnect={onConnect}
+                        onNodeClick={(_, n) => setSelectedId(n.id)}
+                        onPaneClick={() => setSelectedId(null)}
+                        defaultEdgeOptions={EDGE_OPTIONS}
+                        deleteKeyCode={['Delete', 'Backspace']}
+                        fitView
+                        fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
+                        zoomOnScroll={false}
+                        zoomActivationKeyCode="Control"
+                        preventScrolling={false}
+                        minZoom={0.3}
+                        maxZoom={1.75}
+                        proOptions={{ hideAttribution: true }}
                     >
-                        <Trash2 size={12} />
-                    </button>
-                )}
+                        <Background gap={22} size={1.2} />
+                        <MiniMap
+                            className="rm-minimap"
+                            pannable
+                            zoomable
+                            nodeBorderRadius={4}
+                            nodeClassName={(n) => (taskById.get(n.id)?.status === 'Completed' ? 'rm-mini-done' : 'rm-mini-node')}
+                        />
+                    </ReactFlow>
+
+                    {nodes.length === 0 && (
+                        <div className="rm-canvas-empty">
+                            <EmptyState
+                                stacked
+                                icon={<Route size={20} />}
+                                title="This roadmap has no steps yet"
+                                help="Add tasks from your list, then drag from a dot to link one task to the next."
+                                action={<button type="button" className="btn btn-primary" onClick={() => setPickerOpen(true)}><Plus size={16} /> Add task</button>}
+                            />
+                        </div>
+                    )}
+
+                    {nodes.length >= 2 && edges.length === 0 && (
+                        <div className="rm-connect-hint" role="note">
+                            <MousePointerClick size={16} aria-hidden="true" />
+                            Drag from a dot to link one task to the next
+                        </div>
+                    )}
+
+                    <div role="group" aria-label="Zoom" className="rm-zoom">
+                        <button type="button" aria-label="Zoom out" onClick={() => flow.zoomOut({ duration: 150 })}><Minus size={16} /></button>
+                        <span className="tabular" aria-live="polite">{Math.round(zoom * 100)}%</span>
+                        <button type="button" aria-label="Zoom in" onClick={() => flow.zoomIn({ duration: 150 })}><Plus size={16} /></button>
+                        <span className="rm-zoom-sep" aria-hidden="true" />
+                        <button type="button" aria-label="Fit to screen" onClick={() => flow.fitView({ padding: 0.3, duration: 250 })}><Maximize size={16} /></button>
+                    </div>
+                </div>
+
+                <aside className="rm-inspector" aria-label="Selected task">
+                    {selected ? (
+                        <>
+                            <div className="rm-insp-head">
+                                <span className="rm-insp-overline">Selected task</span>
+                                <h2>{selTask?.title || selected.data.label || 'Untitled task'}</h2>
+                                <span className="rm-insp-meta">
+                                    {selTask
+                                        ? [selTask.groupId?.name || 'Uncategorized', selTask.category].filter(Boolean).join(' · ')
+                                        : 'This task no longer exists'}
+                                </span>
+                            </div>
+                            {selTask && (
+                                <label className="field">
+                                    <span className="field-label">Status</span>
+                                    <select className="input" value={selTask.status} onChange={(e) => setStatus(selTask, e.target.value)}>
+                                        {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                                    </select>
+                                </label>
+                            )}
+                            <dl className="rm-insp-facts">
+                                <div><dt>Progress</dt><dd className="tabular">{Math.round(selTask?.progress ?? selected.data.progress ?? 0)}%</dd></div>
+                                <div>
+                                    <dt>Due</dt>
+                                    <dd className={overdue ? 'is-overdue' : ''}>{selTask?.scheduledDate ? formatDueDate(selTask.scheduledDate) : '—'}</dd>
+                                </div>
+                                <div><dt>Comes after</dt><dd>{before.length ? before.join(', ') : '—'}</dd></div>
+                                <div><dt>Leads to</dt><dd>{after.length ? after.join(', ') : '—'}</dd></div>
+                            </dl>
+                            <div className="rm-insp-actions">
+                                {selTask && (
+                                    <>
+                                        <button type="button" className="btn btn-primary" onClick={() => setSessionTask(selTask)}>
+                                            <Play size={12} fill="currentColor" aria-hidden="true" /> Start a session
+                                        </button>
+                                        <Link to={`/tasks/${selTask._id}`} className="btn">Open in Tasks</Link>
+                                    </>
+                                )}
+                                <button type="button" className="btn btn-ghost rm-remove" onClick={() => removeNode(selected.id)}>Remove from roadmap</button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="rm-insp-head">
+                            <span className="rm-insp-overline">Roadmap</span>
+                            <h2>{roadmap.skillName}</h2>
+                            <p className="rm-insp-help">
+                                Select a task to see its details. Drag tasks to arrange them, drag from the bottom dot of one task to the top dot of another to link them, and press Delete to remove a selected link.
+                            </p>
+                        </div>
+                    )}
+                </aside>
             </div>
 
-            <div className={`task-node-status ${statusClass}`}>
-                {data.status || 'Not Started'}
-            </div>
-
-            <div className="task-node-progress">
-                <div className="task-node-progress-bar-bg">
-                    <div
-                        className="task-node-progress-fill"
-                        style={{
-                            width: `${progress}%`,
-                            background: PROGRESS_COLOR(progress),
-                        }}
-                    />
-                </div>
-                <div className="task-node-progress-label">
-                    <span>Progress</span>
-                    <span>{progress}%</span>
-                </div>
-            </div>
+            <AddBlockModal
+                isOpen={pickerOpen}
+                tasks={available}
+                pickTitle="Add a task"
+                pickSubtitle="Pick a task from your list to add as a step."
+                pickAction="Add to roadmap"
+                onPick={addTask}
+                onClose={() => setPickerOpen(false)}
+            />
+            <CreateRoadmap isOpen={renameOpen} initialData={roadmap} loading={renaming} onSubmit={rename} onClose={() => setRenameOpen(false)} />
+            <FocusSessionFlow
+                isOpen={Boolean(sessionTask)}
+                task={sessionTask}
+                onClose={() => setSessionTask(null)}
+                onSaved={() => dispatch(fetchInventoryTasks())}
+            />
         </div>
     );
 };
 
-const nodeTypes = { taskNode: TaskNode };
-
-/* ── Default edge style ── */
-const DEFAULT_EDGE_OPTIONS = {
-    style: { stroke: '#94a3b8', strokeWidth: 2 },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8' },
-    animated: false,
-};
-
-/* ── Main Canvas Component ── */
 const RoadmapCanvas = () => {
     const { id } = useParams();
     const dispatch = useDispatch();
-    const navigate = useNavigate();
-    const readonly = isMobile();
+    const { activeRoadmap, loading, error } = useSelector((s) => s.roadmaps);
 
-    const { activeRoadmap, loading, saving } = useSelector(state => state.roadmaps);
-    const { inventory } = useSelector(state => state.tasks);
-
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-    const [searchQuery, setSearchQuery]   = useState('');
-    const [showSearch, setShowSearch]     = useState(false);
-    const [saveStatus, setSaveStatus]     = useState('idle'); // idle | saving | saved
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const [editModalOpen, setEditModalOpen] = useState(false);
-    const [editSubmitting, setEditSubmitting] = useState(false);
-
-    const settingsRef = useRef(null);
-    const saveTimerRef = useRef(null);
-    const deleteNodeRef = useRef(null); // stable ref so populate effect never goes stale
-
-    /* ── Load data on mount ── */
     useEffect(() => {
         dispatch(fetchRoadmapById(id));
         dispatch(fetchInventoryTasks());
         return () => dispatch(clearActiveRoadmap());
     }, [dispatch, id]);
 
-    /* ── Populate flow from Redux ── */
-    useEffect(() => {
-        if (!activeRoadmap) return;
-
-        const flowNodes = (activeRoadmap.nodes || []).map(n => ({
-            id: n.id,
-            type: 'taskNode',
-            position: n.position || { x: 0, y: 0 },
-            data: {
-                id: n.id,
-                label: n.data?.label || 'Task',
-                progress: n.data?.progress || 0,
-                status: n.data?.status || 'Not Started',
-                onDelete: (nodeId) => deleteNodeRef.current?.(nodeId),
-            },
-        }));
-
-        const flowEdges = (activeRoadmap.edges || []).map(e => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            animated: e.animated || false,
-            label: e.label || '',
-            ...DEFAULT_EDGE_OPTIONS,
-        }));
-
-        setNodes(flowNodes);
-        setEdges(flowEdges);
-    }, [activeRoadmap]);
-
-    /* ── Close settings on outside click ── */
-    useEffect(() => {
-        const handler = (e) => {
-            if (settingsRef.current && !settingsRef.current.contains(e.target)) {
-                setSettingsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    /* ── Flat task list from inventory ── */
-    const allTasks = useMemo(() => {
-        return Object.values(inventory).flat();
-    }, [inventory]);
-
-    const filteredTasks = useMemo(() => {
-        if (!searchQuery.trim()) return allTasks.slice(0, 8);
-        const q = searchQuery.toLowerCase();
-        return allTasks.filter(t =>
-            t.title?.toLowerCase().includes(q) ||
-            t.category?.toLowerCase().includes(q)
-        ).slice(0, 10);
-    }, [allTasks, searchQuery]);
-
-    /* ── Node already on canvas check ── */
-    const nodeIds = useMemo(() => new Set(nodes.map(n => n.id)), [nodes]);
-
-    /* ── Add task as node ── */
-    const handleAddTaskNode = useCallback((task) => {
-        if (nodeIds.has(task._id)) return;
-
-        const offset = nodes.length * 30;
-        const newNode = {
-            id: task._id,
-            type: 'taskNode',
-            position: { x: 200 + offset, y: 150 + offset },
-            data: {
-                id: task._id,
-                label: task.title,
-                progress: task.progress || 0,
-                status: task.status || 'Not Started',
-                onDelete: (nodeId) => deleteNodeRef.current?.(nodeId),
-            },
-        };
-
-        setNodes(nds => [...nds, newNode]);
-        setSearchQuery('');
-        setShowSearch(false);
-    }, [nodes, nodeIds, setNodes]);
-
-    /* ── Delete node + its edges ── */
-    const handleDeleteNode = useCallback((nodeId) => {
-        setNodes(nds => nds.filter(n => n.id !== nodeId));
-        setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
-    }, [setNodes, setEdges]);
-
-    // Keep ref in sync so the populate effect's proxy always calls the latest version
-    deleteNodeRef.current = handleDeleteNode;
-
-    /* ── Connect nodes ── */
-    const onConnect = useCallback((params) => {
-        setEdges(eds => addEdge({
-            ...params,
-            id: `e-${params.source}-${params.target}-${Date.now()}`,
-            ...DEFAULT_EDGE_OPTIONS,
-        }, eds));
-    }, [setEdges]);
-
-    /* ── Save canvas to backend ── */
-    const handleSave = useCallback(async () => {
-        if (!activeRoadmap || saving) return;
-        setSaveStatus('saving');
-
-        const serialisedNodes = nodes.map(n => ({
-            id: n.id,
-            type: n.type || 'taskNode',
-            position: n.position,
-            data: {
-                label: n.data.label,
-                progress: n.data.progress,
-                status: n.data.status,
-            },
-        }));
-
-        const serialisedEdges = edges.map(e => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            animated: e.animated || false,
-            label: e.label || '',
-        }));
-
-        try {
-            await dispatch(saveRoadmapCanvas({
-                skillName: activeRoadmap.skillName,
-                nodes: serialisedNodes,
-                edges: serialisedEdges,
-                zoom: 1,
-                pan: { x: 0, y: 0 },
-            })).unwrap();
-            setSaveStatus('saved');
-            clearTimeout(saveTimerRef.current);
-            saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);
-        } catch (err) {
-            console.error('Save failed:', err);
-            setSaveStatus('idle');
+    if (!activeRoadmap || activeRoadmap._id !== id) {
+        if (error && !loading) {
+            return (
+                <div className="page">
+                    <div className="page-inner">
+                        <EmptyState
+                            icon={<Route size={20} />}
+                            title="Couldn't open this roadmap"
+                            help="It may have been deleted."
+                            action={<Link to="/roadmaps" className="btn">Back to roadmaps</Link>}
+                        />
+                    </div>
+                </div>
+            );
         }
-    }, [activeRoadmap, nodes, edges, saving, dispatch]);
-
-    /* ── Edit roadmap name ── */
-    const handleEditMeta = async (formData) => {
-        setEditSubmitting(true);
-        try {
-            await dispatch(updateRoadmapMeta({ id, skillName: formData.skillName })).unwrap();
-            setEditModalOpen(false);
-            setSettingsOpen(false);
-        } catch (err) {
-            console.error('Edit failed:', err);
-        } finally {
-            setEditSubmitting(false);
-        }
-    };
-
-    /* ── Delete roadmap ── */
-    const handleDelete = async () => {
-        if (!window.confirm(`Delete "${activeRoadmap?.skillName}"? This cannot be undone.`)) return;
-        try {
-            await dispatch(deleteRoadmap(id)).unwrap();
-            navigate('/roadmaps');
-        } catch (err) {
-            console.error('Delete failed:', err);
-        }
-    };
-
-    if (loading && !activeRoadmap) return (
-        <div className="details-loader-container">
-            <BarLoader color="#3b82f6" />
-            <p>Loading Roadmap...</p>
-        </div>
-    );
-
-    if (!activeRoadmap) return null;
+        return <div className="rm-editor"><div className="skeleton rm-skeleton" /></div>;
+    }
 
     return (
-        <div className="roadmap-canvas-page">
-            {/* Read-only banner on mobile */}
-            {readonly && (
-                <div className="canvas-readonly-banner">
-                    <AlertTriangle size={14} />
-                    View-only mode — editing roadmaps is available on desktop.
-                </div>
-            )}
-
-            {/* ── Toolbar ── */}
-            <div className="canvas-toolbar">
-                <div className="canvas-toolbar-left">
-                    <button className="canvas-back-btn" onClick={() => navigate('/roadmaps')}>
-                        <ArrowLeft size={16} /> Back
-                    </button>
-                    <div className="canvas-title-block">
-                        <span className="canvas-title">{activeRoadmap.skillName}</span>
-                        <span className="canvas-subtitle">
-                            {nodes.length} node{nodes.length !== 1 ? 's' : ''} · {edges.length} connection{edges.length !== 1 ? 's' : ''}
-                        </span>
-                    </div>
-                </div>
-
-                <div className="canvas-toolbar-right">
-                    {/* Save status indicator */}
-                    {saveStatus === 'saving' && (
-                        <span className="canvas-save-indicator saving">Saving...</span>
-                    )}
-                    {saveStatus === 'saved' && (
-                        <span className="canvas-save-indicator saved">
-                            <CheckCircle size={13} /> Saved
-                        </span>
-                    )}
-
-                    {!readonly && (
-                        <>
-                            {/* Add task button */}
-                            <button
-                                className="btn-canvas-action"
-                                onClick={() => setShowSearch(s => !s)}
-                                title="Add task node"
-                            >
-                                <Plus size={16} />
-                                <span>Add Task</span>
-                            </button>
-
-                            {/* Save button */}
-                            <button
-                                className="btn-canvas-action primary"
-                                onClick={handleSave}
-                                disabled={saving}
-                            >
-                                <Save size={15} />
-                                <span>{saving ? 'Saving...' : 'Save'}</span>
-                            </button>
-                        </>
-                    )}
-
-                    {/* Settings dropdown */}
-                    <div className="canvas-settings-wrapper" ref={settingsRef}>
-                        <button
-                            className="btn-canvas-action"
-                            onClick={() => setSettingsOpen(o => !o)}
-                            title="Settings"
-                        >
-                            <Settings size={15} />
-                            <span>Settings</span>
-                        </button>
-
-                        {settingsOpen && (
-                            <div className="canvas-settings-dropdown">
-                                <button
-                                    className="canvas-dropdown-item"
-                                    onClick={() => { setEditModalOpen(true); setSettingsOpen(false); }}
-                                >
-                                    <Edit3 size={14} /> Edit Name
-                                </button>
-                                <button
-                                    className="canvas-dropdown-item danger"
-                                    onClick={handleDelete}
-                                >
-                                    <Trash2 size={14} /> Delete Roadmap
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* ── React Flow canvas ── */}
-            <div className="canvas-flow-wrapper">
-                <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={readonly ? undefined : onNodesChange}
-                    onEdgesChange={readonly ? undefined : onEdgesChange}
-                    onConnect={readonly ? undefined : onConnect}
-                    nodeTypes={nodeTypes}
-                    defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
-                    fitView
-                    fitViewOptions={{ padding: 0.3 }}
-                    nodesDraggable={!readonly}
-                    nodesConnectable={!readonly}
-                    elementsSelectable={!readonly}
-                    deleteKeyCode={readonly ? null : 'Delete'}
-                    proOptions={{ hideAttribution: true }}
-                >
-                    <Background color="#d1d5db" gap={24} size={1} />
-                    <Controls showInteractive={false} />
-                    {!isMobile() && (
-                        <MiniMap
-                            nodeColor={(n) => {
-                                const s = n.data?.status;
-                                if (s === 'Completed') return '#22c55e';
-                                if (s === 'On-Going')  return '#3b82f6';
-                                return '#94a3b8';
-                            }}
-                            maskColor="rgba(248, 250, 252, 0.7)"
-                        />
-                    )}
-                </ReactFlow>
-
-                {/* Empty canvas hint */}
-                {nodes.length === 0 && (
-                    <div className="canvas-empty-hint">
-                        <GitBranchIcon />
-                        <p>Your roadmap is empty</p>
-                        <small>
-                            Click <strong>Add Task</strong> in the toolbar to search for tasks and add them as
-                            nodes. Then drag between nodes to create connections.
-                        </small>
-                    </div>
-                )}
-
-                {/* Task search panel (floating, bottom) */}
-                {!readonly && showSearch && (
-                    <div className="add-node-panel">
-                        <Search size={16} color="#94a3b8" />
-                        <input
-                            type="text"
-                            placeholder="Search tasks to add as nodes..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            autoFocus
-                        />
-                        <button
-                            className="btn-add-node"
-                            onClick={() => setShowSearch(false)}
-                        >
-                            Close
-                        </button>
-
-                        {/* Task dropdown */}
-                        {(filteredTasks.length > 0 || searchQuery) && (
-                            <div className="task-search-dropdown">
-                                {filteredTasks.length === 0 ? (
-                                    <div className="task-search-item">
-                                        <div className="task-search-item-title" style={{ color: '#94a3b8' }}>
-                                            No tasks found
-                                        </div>
-                                    </div>
-                                ) : (
-                                    filteredTasks.map(task => (
-                                        <div
-                                            key={task._id}
-                                            className="task-search-item"
-                                            onClick={() => handleAddTaskNode(task)}
-                                        >
-                                            <div style={{ flex: 1 }}>
-                                                <div className="task-search-item-title">
-                                                    {task.title}
-                                                    {nodeIds.has(task._id) && (
-                                                        <span style={{ color: '#22c55e', marginLeft: '0.5rem', fontSize: '0.65rem' }}>
-                                                            ✓ Added
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="task-search-item-meta">
-                                                    {task.category}
-                                                    {task.groupId?.name && ` · ${task.groupId.name}`}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Edit roadmap name modal */}
-            <CreateRoadmap
-                isOpen={editModalOpen}
-                onClose={() => setEditModalOpen(false)}
-                onSubmit={handleEditMeta}
-                initialData={activeRoadmap}
-                loading={editSubmitting}
-            />
-        </div>
+        <ReactFlowProvider>
+            <Editor key={activeRoadmap._id} roadmap={activeRoadmap} />
+        </ReactFlowProvider>
     );
 };
-
-/* Inline SVG icon to avoid import issues */
-const GitBranchIcon = () => (
-    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
-        <line x1="6" y1="3" x2="6" y2="15" />
-        <circle cx="18" cy="6" r="3" />
-        <circle cx="6" cy="18" r="3" />
-        <path d="M18 9a9 9 0 0 1-9 9" />
-    </svg>
-);
 
 export default RoadmapCanvas;

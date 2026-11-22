@@ -28,16 +28,18 @@ const TaskSchema = new mongoose.Schema({
     //Execution logic
     status: {
         type: String,
-        enum: ['Not Started', 'On-Going', 'Completed', 'Shelved'],
+        enum: ['Not Started', 'On-Going', 'On-Hold', 'Completed', 'Shelved'],
         default: 'Not Started'
     },
+    track: { type: String, enum: ['Backend', 'Frontend', 'Mobile', 'Design', null], default: null },
     kanban: {
         type: String,
         enum: [
             'Todo', 'Doing', 'Done', 'Testing',
-            'backendBacklog', 'frontendBacklog', 'mobileBacklog', 'design', 'issues'
+            'backendBacklog', 'frontendBacklog', 'mobileBacklog', 'design', 'issues',
+            'todo', 'doing', 'testing', 'done', 'blocked', 'onHold', 'trash'
         ],
-        default: 'Todo'
+        default: 'todo'
     },
     scheduledDate: { type: Date, default: null },
     subtasks: [SubtaskSchema]

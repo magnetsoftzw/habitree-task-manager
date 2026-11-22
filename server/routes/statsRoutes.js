@@ -6,6 +6,8 @@ const {
     getWeeklyStats,
     getMonthlyStats,
     getTaskVolumeStats,
+    getRangeStats,
+    getRecentActivity,
 } = require('../controllers/statsController');
 
 router.use(protect);
@@ -24,5 +26,11 @@ router.get('/monthly', getMonthlyStats);
 
 // @route   GET /api/stats/tasks
 router.get('/tasks', getTaskVolumeStats);
+
+// @route   GET /api/stats/range?from=ISO&to=ISO&tz=+02:00
+router.get('/range', getRangeStats);
+
+// @route   GET /api/stats/activity
+router.get('/activity', getRecentActivity);
 
 module.exports = router;

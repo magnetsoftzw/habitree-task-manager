@@ -11,16 +11,18 @@ const PlannerSchema = new mongoose.Schema({
         required: true
     },
     tasks: [{
-        taskId: { 
-            type: mongoose.Schema.Types.ObjectId, 
-            ref: 'Task',
-            required: true 
+        taskType: { type: String, enum: ['task', 'projectTask'], default: 'task' },
+        taskId: {
+            type: mongoose.Schema.Types.ObjectId,
+            required: true
         },
-        subtaskId: { 
-            type: String, 
-            default: null 
+        projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+        subtaskId: {
+            type: String,
+            default: null
         },
         time: { type: String, default: "08:00" },
+        duration: { type: Number, default: 30 },
         comments: { type: String, default: "" }
     }]
 }, { timestamps: true });

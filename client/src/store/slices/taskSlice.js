@@ -103,11 +103,20 @@ const taskSlice = createSlice({
                 state.loading = false;
                 state.inventory = action.payload;
             })
-            .addCase(createNewTask.fulfilled, (state, action) => {
+            .addCase(createNewTask.fulfilled, (state) => {
                 state.loading = false;
             })
-            .addCase(updateTaskAction.pending, (state) => {
+            .addCase(updateTaskAction.pending, (state, action) => {
                 state.loading = true;
+                const { id, updates } = action.meta.arg;
+                if (state.currentTask?._id === id) {
+                    // eslint-disable-next-line no-unused-vars
+                    const { groupId, ...rest } = updates;
+                    Object.assign(state.currentTask, rest);
+                }
+            })
+            .addCase(updateTaskAction.rejected, (state) => {
+                state.loading = false;
             })
             .addCase(updateTaskAction.fulfilled, (state, action) => {
                 state.currentTask = action.payload;
@@ -115,6 +124,10 @@ const taskSlice = createSlice({
             })
             .addCase(deleteTask.fulfilled, (state, action) => {
                 const deletedId = action.payload;
+                Object.keys(state.inventory || {}).forEach((key) => {
+                    state.inventory[key] = state.inventory[key].filter((t) => t._id !== deletedId);
+                });
+                if (state.currentTask?._id === deletedId) state.currentTask = null;
             });
     }
 });

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearToken, getToken } from './Token';
 
 const API = axios.create({
     baseURL: import.meta.env.VITE_API_CALL || 'https://habitree-server.vercel.app/api',
@@ -10,7 +11,7 @@ const API = axios.create({
 //REQUEST INTERCEPTOR: Attach Token
 API.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('habitree_token');
+        const token = getToken();
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -25,15 +26,11 @@ API.interceptors.request.use(
 API.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && error.response.status === 500) {
-            //Internal Server Error
-            localStorage.removeItem('habitree_token');
-            window.location.href = '/server-error';
-        }
-        else if (error.response && error.response.status === 401) {
-            //Token expired or unauthorized
-            localStorage.removeItem('habitree_token');
-            window.location.href = '/login'
+        const status = error.response?.status;
+        const isAuthCall = /\/auth\//.test(error.config?.url || '');
+        if (status === 401 && !isAuthCall) {
+            clearToken();
+            if (window.location.pathname !== '/login') window.location.href = '/login';
         }
         return Promise.reject(error);
     }

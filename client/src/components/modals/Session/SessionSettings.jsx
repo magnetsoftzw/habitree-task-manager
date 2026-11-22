@@ -1,117 +1,67 @@
 import { useState } from 'react';
-import { X, Play, Info, Minus, Plus } from 'lucide-react';
-import './sessionCommon.css';
+import { Minus, Play, Plus } from 'lucide-react';
+import Modal from '../../ui/Modal';
+import { getFocusLength, saveFocusLength } from '../../../hooks/UseFocusLength';
+import './Session.css';
 
-import Logo from '../../../assets/logo.png';
+const PRESETS = [15, 25, 45, 60, 90];
+const MIN = 1;
+const MAX = 180;
 
-const SessionSettings = ({ isOpen, onClose, onStart }) => {
-    const [hours, setHours] = useState(0);
-    const [minutes, setMinutes] = useState(20);
-    const [seconds, setSeconds] = useState(0);
+const SessionSettings = (props) => (props.isOpen ? <SessionSettingsDialog {...props} /> : null);
 
-    const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
-    const maxSeconds = 3600 * 3;
-
-    const handleQuickTime = (mins) => {
-        setHours(Math.floor(mins / 60));
-        setMinutes(mins % 60);
-        setSeconds(0);
-    };
-
-    const adjustUnit = (unit, amount) => {
-        if (unit === 'h') setHours(prev => Math.max(0, prev + amount));
-        if (unit === 'm') setMinutes(prev => Math.max(0, Math.min(59, prev + amount)));
-        if (unit === 's') setSeconds(prev => Math.max(0, Math.min(59, prev + amount)));
-    };
-
-    if (!isOpen) return null;
+const SessionSettingsDialog = ({ onClose, onStart, taskTitle }) => {
+    const [minutes, setMinutes] = useState(getFocusLength);
+    const clamp = (v) => Math.max(MIN, Math.min(MAX, Math.round(v) || MIN));
 
     return (
-        <div className="modal-overlay">
-            <div className="session-modal">
-                <header className="modal-header">
-                    <div className="modal-logo">
-                        <img src={Logo} style={{ height: '2rem' }} alt="Habitree" />
-                        Habitree
-                    </div>
-                    <button className="close-btn" onClick={onClose}>
-                        <X size={20} strokeWidth={2} />
+        <Modal
+            isOpen
+            onClose={onClose}
+            title="Start a focus session"
+            subtitle={taskTitle ? `Working on ${taskTitle}` : 'No task selected — the time still counts toward your daily goal.'}
+            width={460}
+            footer={(
+                <>
+                    <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+                    <button type="button" className="btn btn-primary" onClick={() => { saveFocusLength(minutes); onStart(minutes * 60); }}>
+                        <Play size={14} fill="currentColor" aria-hidden="true" /> Start {minutes} min
                     </button>
-                </header>
-
-                <div className="session-modal-body">
-                    <span className="label-input">Set Timer</span>
-
-                    <div className="main-timer-display">
-                        {String(hours).padStart(2, '0')}:
-                        {String(minutes).padStart(2, '0')}:
-                        {String(seconds).padStart(2, '0')}
-                    </div>
-
-                    <div className="timer-controls-grid">
-                        <TimeUnit label="Hours"   value={hours}   onAdj={(a) => adjustUnit('h', a)} />
-                        <TimeUnit label="Minutes" value={minutes} onAdj={(a) => adjustUnit('m', a)} />
-                        <TimeUnit label="Seconds" value={seconds} onAdj={(a) => adjustUnit('s', a)} />
-                    </div>
-
-                    <div className="slider-container">
+                </>
+            )}
+        >
+            <div className="ss-body">
+                <div className="ss-dial">
+                    <button type="button" className="icon-btn" aria-label="Five minutes less" onClick={() => setMinutes((m) => clamp(m - 5))} disabled={minutes <= MIN}>
+                        <Minus size={18} />
+                    </button>
+                    <label className="ss-value">
                         <input
-                            type="range"
-                            min="0"
-                            max={maxSeconds}
-                            value={totalSeconds}
-                            onChange={(e) => handleQuickTime(Math.floor(e.target.value / 60))}
-                            className="timer-range-slider"
+                            type="number"
+                            inputMode="numeric"
+                            min={MIN}
+                            max={MAX}
+                            value={minutes}
+                            aria-label="Session length in minutes"
+                            onChange={(e) => setMinutes(clamp(Number(e.target.value)))}
                         />
-                    </div>
-
-                    <div className="quick-times">
-                        <span className="quick-label">Quick:</span>
-                        <button onClick={() => handleQuickTime(20)} className={`qt-btn ${minutes === 20 && hours === 0 && seconds === 0 ? 'active' : ''}`}>
-                            20m
-                        </button>
-                        <button onClick={() => handleQuickTime(30)} className={`qt-btn ${minutes === 30 && hours === 0 && seconds === 0 ? 'active' : ''}`}>
-                            30m
-                        </button>
-                        <button onClick={() => handleQuickTime(40)} className={`qt-btn ${minutes === 40 && hours === 0 && seconds === 0 ? 'active' : ''}`}>
-                            40m
-                        </button>
-                        <button onClick={() => handleQuickTime(60)} className={`qt-btn ${hours === 1 && minutes === 0 && seconds === 0 ? 'active' : ''}`}>
-                            60m
-                        </button>
-                    </div>
+                        <span>minutes</span>
+                    </label>
+                    <button type="button" className="icon-btn" aria-label="Five minutes more" onClick={() => setMinutes((m) => clamp(m + 5))} disabled={minutes >= MAX}>
+                        <Plus size={18} />
+                    </button>
                 </div>
-
-                <footer className="session-modal-footer">
-                    <div className="footer-actions">
-                        <button className="btn-cancel" onClick={onClose}>Cancel</button>
-                        <button
-                            className="btn-start"
-                            onClick={() => onStart(totalSeconds)}
-                            disabled={totalSeconds === 0}
-                        >
-                            <Play size={18} strokeWidth={2} fill="currentColor" /> Start Session
+                <div role="group" aria-label="Presets" className="ss-presets">
+                    {PRESETS.map((p) => (
+                        <button key={p} type="button" className="ss-preset" aria-pressed={minutes === p} onClick={() => setMinutes(p)}>
+                            {p < 60 ? `${p} min` : `${p / 60 === 1 ? '1 h' : `${p / 60} h`}`}
                         </button>
-                    </div>
-                    <div className="footer-info">
-                        <Info size={16} strokeWidth={2} />
-                        <p>Timer countdown will begin upon 'Start Session'</p>
-                    </div>
-                </footer>
+                    ))}
+                </div>
+                <p className="ss-help">The timer starts right away. Stop it any time to save the minutes you've done.</p>
             </div>
-        </div>
+        </Modal>
     );
 };
-
-const TimeUnit = ({ label, value, onAdj }) => (
-    <div className="time-unit-box">
-        <div className="unit-controls">
-            <button onClick={() => onAdj(-1)}><Minus size={14} /></button>
-            <span className="unit-value">{String(value).padStart(2, '0')}</span>
-            <button onClick={() => onAdj(1)}><Plus size={14} /></button>
-        </div>
-        <span className="unit-label">{label}</span>
-    </div>
-);
 
 export default SessionSettings;

@@ -1,4 +1,3 @@
-// models/project.js
 const mongoose = require('mongoose');
 
 const projectSchema = new mongoose.Schema({
@@ -6,7 +5,8 @@ const projectSchema = new mongoose.Schema({
     description: { type: String, default: "No Description" },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     collaborators: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    techStack: [{ type: String }], 
+    techStack: [{ type: String }],
+    color: { type: String, default: null },
     progress: { type: Number, default: 0 },
 
     kanban: {

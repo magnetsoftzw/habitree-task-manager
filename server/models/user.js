@@ -15,6 +15,8 @@ const UserSchema = new mongoose.Schema({
     },
     settings: {
         autoRollover: { type: Boolean, default: true },
+        dailyGoalMinutes: { type: Number, default: 480, min: 60, max: 960 },
+        sessionReminders: { type: Boolean, default: true },
     }
 });
 

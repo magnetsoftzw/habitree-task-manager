@@ -7,6 +7,7 @@ import groupReducer from './slices/groupSlice';
 import plannerReducer from './slices/plannerSlice';
 import sessionReducer from './slices/sessionSlice';
 import projectReducer from './slices/projectSlice';
+import projectTasksReducer from './slices/projectTasksSlice';
 import userReducer from './slices/userSlice';
 import analyticsReducer from './slices/analyticsSlice';
 
@@ -22,5 +23,6 @@ export const store = configureStore({
         planner: plannerReducer,
         session: sessionReducer,
         projects: projectReducer,
+        projectTasks: projectTasksReducer,
     },
 });

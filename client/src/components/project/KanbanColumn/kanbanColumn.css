@@ -1,298 +1,165 @@
+.kanban-scroll {
+    overflow-x: auto;
+    padding: 0 var(--page-pad-x) 12px;
+    margin: 0 calc(-1 * var(--page-pad-x));
+    scroll-padding-inline: var(--page-pad-x);
+    scrollbar-width: none;
+}
+
+.kanban-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.kanban-top-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 0 0 12px;
+}
+
+.kanban-track {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    width: max-content;
+}
+
 .kanban-column {
-    background-color: #fff;
-    min-width: 18.75rem; /* ~300px */
-    max-width: 18.75rem;
-    border-radius: 0.75rem;
-    border: 1px solid #e2e8f0;
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--kanban-column);
+    border-radius: 14px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    max-height: 100%;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    gap: 10px;
 }
 
-.column-header {
-    padding: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #f1f5f9;
-}
-
-.column-info {
+.kanban-column-head {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 8px;
+    padding: 4px 4px 2px;
 }
 
-.column-title {
-    font-size: 0.75rem;
+.kanban-column-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.kanban-column-name {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-body);
+    font-size: 13px;
     font-weight: 700;
-    color: #475569; /* Slate 600 */
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.task-count {
-    background-color: #e2e8f0;
-    color: #64748b;
-    font-size: 0.75rem;
+.kanban-column-count {
+    font-size: 12px;
     font-weight: 600;
-    padding: 0.1rem 0.5rem;
-    border-radius: 0.25rem;
+    color: var(--text-muted);
 }
 
-.header-actions {
-    display: flex;
-    gap: 0.25rem;
-}
-
-.icon-btn-small {
+.kanban-column-btn,
+.kanban-column-head .menu-trigger {
+    width: 32px;
+    height: 32px;
+    border: 0;
     background: transparent;
-    border: none;
-    color: #94a3b8;
-    cursor: pointer;
-    padding: 0.25rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
     display: flex;
-    align-items: center;
-}
-
-.icon-btn-small:hover {
-    background-color: #f1f5f9;
-    color: #475569;
-}
-
-/* Task List Area */
-.task-list {
-    padding: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    max-height: 20rem;
-    overflow-y: scroll;
-    flex-grow: 1;
-}
-
-/* Custom Scrollbar for columns */
-.task-list::-webkit-scrollbar {
-    width: 4px;
-}
-
-.task-list::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-}
-
-/* Add Item Placeholder (Dashed Box) */
-.add-item-placeholder {
-    border: 2px dashed #e2e8f0;
-    border-radius: 0.625rem;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    color: #94a3b8;
-    font-size: 0.813rem;
-    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.add-item-placeholder:hover {
-    border-color: #22c55e;
-    color: #22c55e;
-    background-color: #f0fdf4;
-}
-/* ── Column dropdown menu ── */
-.column-menu-wrapper {
-    position: relative;
-}
-
-.column-dropdown {
-    position: absolute;
-    top: calc(100% + 0.375rem);
-    right: 0;
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    z-index: 50;
-    min-width: 10rem;
-    overflow: hidden;
-    padding: 0.25rem;
-}
-
-.column-dropdown-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.55rem 0.75rem;
-    border: none;
-    background: none;
-    font-size: 0.8rem;
-    color: #475569;
-    cursor: pointer;
-    border-radius: 0.375rem;
-    font-family: 'Rubik', sans-serif;
-    text-align: left;
-    transition: background 0.1s;
-}
-
-.column-dropdown-item:hover {
-    background: #f8fafc;
-    color: var(--btn-blue);
-}
-
-.column-dropdown-item--danger {
-    color: #ef4444;
-}
-
-.column-dropdown-item--danger:hover {
-    background: #fef2f2;
-    color: #dc2626;
-}
-
-.column-dropdown-item:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-/* ── CSV import bar (below column header) ── */
-.csv-import-bar {
-    border-bottom: 1px solid #e2e8f0;
-    background: #f8fafc;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-}
-
-.csv-bar-preview {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.csv-bar-label {
-    color: #475569;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.csv-bar-label em {
-    font-style: normal;
-    font-weight: 600;
-    color: #334155;
-}
-
-.csv-bar-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
     flex-shrink: 0;
 }
 
-.csv-bar-confirm {
-    padding: 0.25rem 0.75rem;
-    background: #22c55e;
-    color: white;
-    border: none;
-    border-radius: 0.375rem;
-    font-size: 0.75rem;
+.kanban-column-btn:hover,
+.kanban-column-head .menu-trigger:hover {
+    background: var(--surface);
+}
+
+.kanban-column-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 8px;
+    border-radius: var(--radius-md);
+    transition: background-color 120ms;
+}
+
+.kanban-column-cards.is-over {
+    background: var(--accent-soft);
+}
+
+.kanban-add-card {
+    min-height: 44px;
+    border: 1.5px dashed var(--border-strong);
+    background: transparent;
+    border-radius: var(--radius-md);
+    font-size: 13px;
     font-weight: 600;
-    cursor: pointer;
-    font-family: 'Rubik', sans-serif;
-    transition: background 0.15s;
-}
-
-.csv-bar-confirm:hover {
-    background: #16a34a;
-}
-
-.csv-bar-cancel,
-.csv-bar-dismiss {
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: none;
-    border: none;
-    color: #94a3b8;
+    gap: 6px;
     cursor: pointer;
-    padding: 0.2rem;
-    border-radius: 0.25rem;
-    transition: color 0.15s;
 }
 
-.csv-bar-cancel:hover,
-.csv-bar-dismiss:hover {
-    color: #ef4444;
+.kanban-add-card:hover {
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
-.csv-bar-error {
+.kanban-csv {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    color: #ef4444;
-    flex: 1;
+    gap: 8px;
+    padding: 8px 8px 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 12px;
 }
 
-.csv-bar-error span {
+.kanban-csv-text {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text-secondary);
 }
 
-/* Spinner for importing state */
-@keyframes csv-spin {
-    to { transform: rotate(360deg); }
+@media (max-width: 560px) {
+    .kanban-column {
+        width: min(280px, 82vw);
+    }
 }
 
-.csv-spin {
-    animation: csv-spin 0.8s linear infinite;
-    flex-shrink: 0;
+.kanban-column-head .menu {
+    display: none;
 }
 
-/* ── Selection items in dropdown ── */
-.column-dropdown-divider {
-    height: 1px;
-    background: #f1f5f9;
-    margin: 0.25rem 0;
+.kanban-column:hover .kanban-column-head .menu,
+.kanban-column-head:focus-within .menu,
+.kanban-column-head .menu:has([aria-expanded='true']) {
+    display: block;
 }
 
-/* Selection count bar (in ProjectKanban) */
-.selection-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 1.5rem;
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 0.5rem;
-    margin-bottom: 0.75rem;
-    font-size: 0.825rem;
-}
-
-.selection-bar-count {
-    font-weight: 600;
-    color: #1d4ed8;
-}
-
-.selection-bar-clear {
-    background: none;
-    border: none;
-    color: #3b82f6;
-    font-size: 0.775rem;
-    cursor: pointer;
-    font-family: 'Rubik', sans-serif;
-    text-decoration: underline;
+@media (hover: none) {
+    .kanban-column-head .menu {
+        display: block;
+    }
 }

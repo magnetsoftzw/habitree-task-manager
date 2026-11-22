@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import MainLayout from './layouts/MainLayout';
 import Landing from './pages/Landing/Landing';
 import Dashboard from './pages/Dashboard/Dashboard';
@@ -8,7 +9,7 @@ import TaskInventory from './pages/TaskInventory/TaskInventory';
 import TaskDetails from './pages/TaskDetails/TaskDetails';
 import ProjectManager from './pages/ProjectManager/ProjectManager';
 import ProjectKanban from './pages/ProjectKanban/ProjectKanban';
-import Profile from './pages/Profile/Profile';
+import Settings from './pages/Settings/Settings';
 import Analytics from './pages/Analytics/Analytics';
 import Calendar from './pages/Calendar/Calendar';
 import RoadmapList from './pages/Roadmaps/RoadmapList';
@@ -20,6 +21,18 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 function App() {
     return (
         <Router>
+            <Toaster
+                position="bottom-center"
+                toastOptions={{
+                    style: {
+                        background: 'var(--text)',
+                        color: 'var(--surface)',
+                        borderRadius: '10px',
+                        fontSize: '14px',
+                        fontWeight: 500,
+                    },
+                }}
+            />
             <Routes>
                 {/* Public */}
                 <Route path="/" element={<Landing />} />
@@ -33,7 +46,7 @@ function App() {
                     <Route path="/tasks/:id" element={<TaskDetails />} />
                     <Route path="/projects" element={<ProjectManager />} />
                     <Route path="/projects/:id" element={<ProjectKanban />} />
-                    <Route path="/settings" element={<Profile />} />
+                    <Route path="/settings" element={<Settings />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/calendar" element={<Calendar />} />
                     <Route path="/roadmaps" element={<RoadmapList />} />

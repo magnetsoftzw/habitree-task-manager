@@ -1,145 +1,51 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { logout } from '../store/slices/authSlice';
 import { fetchCurrentUser } from '../store/slices/userSlice';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import {
-    LayoutDashboard, ListTodo, Map, Calendar,
-    PieChart, Settings, Bell, Search,
-    Kanban, LogOut, Menu, X
-} from 'lucide-react';
-import Logo from '../assets/logo.png';
-import Avatar from '../assets/profile.png';
-import './mainlayout.css';
+import { fetchProjects } from '../store/slices/projectSlice';
+import { fetchUserRoadmaps } from '../store/slices/roadmapSlice';
+import { fetchInventoryTasks } from '../store/slices/taskSlice';
+import Sidebar from '../components/layout/Sidebar';
+import './MainLayout.css';
+
+const REDESIGNED_ROUTES = [/^\/dashboard$/, /^\/tasks$/, /^\/tasks\/[^/]+$/, /^\/projects$/, /^\/projects\/[^/]+$/, /^\/roadmaps$/, /^\/roadmaps\/[^/]+$/, /^\/calendar$/, /^\/analytics$/, /^\/settings$/];
 
 const MainLayout = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
-    const location = useLocation();
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const { pathname } = useLocation();
+    const isLegacy = !REDESIGNED_ROUTES.some((re) => re.test(pathname));
 
     const { profile } = useSelector((state) => state.user);
+    const projects = useSelector((state) => state.projects.items);
+    const roadmaps = useSelector((state) => state.roadmaps.list);
+    const inventory = useSelector((state) => state.tasks.inventory);
 
     useEffect(() => {
         dispatch(fetchCurrentUser());
+        dispatch(fetchProjects());
+        dispatch(fetchUserRoadmaps());
+        dispatch(fetchInventoryTasks());
     }, [dispatch]);
 
-    const isActive = (path) => location.pathname === path ? 'active' : '';
-    const closeSidebar = () => setSidebarOpen(false);
+    const counts = useMemo(() => ({
+        tasks: Object.values(inventory || {}).reduce((sum, list) => sum + (list?.length || 0), 0),
+        projects: projects?.length || 0,
+        roadmaps: roadmaps?.length || 0,
+    }), [inventory, projects, roadmaps]);
 
     const handleLogout = () => {
         dispatch(logout());
-        navigate('/');
+        navigate('/login');
     };
 
     return (
         <div className="app-shell">
-            <div
-                className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`}
-                onClick={closeSidebar}
-            />
-
-            <aside className={`app-sidebar ${sidebarOpen ? 'open' : ''}`}>
-                <div className="sidebar-header">
-                    <div className="logo-icon">
-                        <img src={Logo} alt="logo" style={{ height: '2rem' }} />
-                    </div>
-                </div>
-
-                <nav className="sidebar-nav">
-                    <Link to="/dashboard" className={`nav-item ${isActive('/dashboard')}`} onClick={closeSidebar}>
-                        <LayoutDashboard size={20} strokeWidth={2} />
-                        <span>Dashboard</span>
-                    </Link>
-                    <Link to="/tasks" className={`nav-item ${isActive('/tasks')}`} onClick={closeSidebar}>
-                        <ListTodo size={20} strokeWidth={2} />
-                        <span>All Tasks</span>
-                    </Link>
-                    <Link to="/projects" className={`nav-item ${isActive('/projects')}`} onClick={closeSidebar}>
-                        <Kanban size={20} strokeWidth={2} />
-                        <span>Projects</span>
-                    </Link>
-                    <Link to="/roadmaps" className={`nav-item ${isActive('/roadmaps')}`} onClick={closeSidebar}>
-                        <Map size={20} strokeWidth={2} />
-                        <span>Roadmaps</span>
-                    </Link>
-                    <Link to="/calendar" className={`nav-item ${isActive('/calendar')}`} onClick={closeSidebar}>
-                        <Calendar size={20} strokeWidth={2} />
-                        <span>Calendar</span>
-                    </Link>
-                    <Link to="/analytics" className={`nav-item ${isActive('/analytics')}`} onClick={closeSidebar}>
-                        <PieChart size={20} strokeWidth={2} />
-                        <span>Analytics</span>
-                    </Link>
-                </nav>
-
-                <div className="sidebar-footer">
-                    <Link to="/settings" className={`nav-item ${isActive('/settings')}`} onClick={closeSidebar}>
-                        <Settings size={20} strokeWidth={2} />
-                        <span>Settings</span>
-                    </Link>
-                    <button className="logout-btn" onClick={handleLogout}>
-                        <LogOut size={20} />
-                        <span>Logout</span>
-                    </button>
-                </div>
-            </aside>
-
-            <div className="content-area">
-                <header className="app-header">
-                    <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <button
-                            className="hamburger-btn"
-                            onClick={() => setSidebarOpen(prev => !prev)}
-                            aria-label="Toggle menu"
-                        >
-                            {sidebarOpen ? <X size={22} /> : <Menu size={22} />}
-                        </button>
-                        <h3>Habitree Task Manager</h3>
-                    </div>
-                    <div className="header-right">
-                        <div className="icon-btn"><Search size={18} /></div>
-                        <div className="icon-btn notification-bell">
-                            <Bell size={18} />
-                            <span className="dot"></span>
-                        </div>
-                        <Link to="/settings" className="user-profile" style={{ textDecoration: 'none' }}>
-                            <img src={Avatar} alt="User" className="avatar" style={{ height: '2rem', borderRadius: '50%' }} />
-                            <div className="user-text">
-                                <span className="user-name">{profile?.username || '—'}</span>
-                                <span className="user-rank">{profile?.role || '—'}</span>
-                            </div>
-                        </Link>
-                    </div>
-                </header>
-
-                <main className="page-container">
-                    <Outlet />
-                </main>
-            </div>
-
-            <nav className="mobile-bottom-nav">
-                <Link to="/dashboard" className={`mobile-nav-item ${isActive('/dashboard')}`}>
-                    <LayoutDashboard size={20} strokeWidth={2} />
-                    <span>Home</span>
-                </Link>
-                <Link to="/tasks" className={`mobile-nav-item ${isActive('/tasks')}`}>
-                    <ListTodo size={20} strokeWidth={2} />
-                    <span>Tasks</span>
-                </Link>
-                <Link to="/projects" className={`mobile-nav-item ${isActive('/projects')}`}>
-                    <Kanban size={20} strokeWidth={2} />
-                    <span>Projects</span>
-                </Link>
-                <Link to="/calendar" className={`mobile-nav-item ${isActive('/calendar')}`}>
-                    <Calendar size={20} strokeWidth={2} />
-                    <span>Calendar</span>
-                </Link>
-                <Link to="/settings" className={`mobile-nav-item ${isActive('/settings')}`}>
-                    <Settings size={20} strokeWidth={2} />
-                    <span>Profile</span>
-                </Link>
-            </nav>
+            <Sidebar user={profile} counts={counts} projects={projects || []} onLogout={handleLogout} />
+            <main className={`app-main ${isLegacy ? 'is-legacy' : ''}`} id="main">
+                <Outlet />
+            </main>
         </div>
     );
 };

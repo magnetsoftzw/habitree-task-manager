@@ -37,6 +37,30 @@ export const createProject = createAsyncThunk(
     }
 );
 
+export const updateProject = createAsyncThunk(
+    'projects/update',
+    async ({ projectId, updates }, { rejectWithValue }) => {
+        try {
+            const { data } = await API.put(`/projects/${projectId}`, updates);
+            return data.project || data;
+        } catch (error) {
+            return rejectWithValue(error.response?.data);
+        }
+    }
+);
+
+export const deleteProject = createAsyncThunk(
+    'projects/delete',
+    async (projectId, { rejectWithValue }) => {
+        try {
+            await API.delete(`/projects/${projectId}`);
+            return projectId;
+        } catch (error) {
+            return rejectWithValue(error.response?.data);
+        }
+    }
+);
+
 export const addTaskToColumn = createAsyncThunk(
     'projects/addTask',
     async ({ projectId, columnId }, { rejectWithValue }) => {
@@ -98,9 +122,9 @@ export const updateTask = createAsyncThunk(
 
 export const deleteTask = createAsyncThunk(
     'projects/deleteTask',
-    async ({ taskId, projectId, columnId }, { rejectWithValue }) => {
+    async ({ taskId, columnId }, { rejectWithValue }) => {
         try {
-            await API.delete(`/tasks/${taskId}`); // Adjust endpoint as needed
+            await API.delete(`/tasks/${taskId}`);
             return { taskId, columnId };
         } catch (error) {
             return rejectWithValue(error.response.data);
@@ -111,7 +135,7 @@ export const deleteTask = createAsyncThunk(
 // Deletes every task in a column sequentially, then clears the column in state.
 export const deleteAllFromColumn = createAsyncThunk(
     'projects/deleteAllFromColumn',
-    async ({ projectId, columnId, taskIds }, { rejectWithValue }) => {
+    async ({ columnId, taskIds }, { rejectWithValue }) => {
         try {
             for (const taskId of taskIds) {
                 await API.delete(`/tasks/${taskId}`);
@@ -209,6 +233,19 @@ const projectSlice = createSlice({
                 state.error = action.payload?.message;
             })
 
+            .addCase(updateProject.fulfilled, (state, action) => {
+                const p = action.payload;
+                if (!p?._id) return;
+                const i = state.items.findIndex((x) => x._id === p._id);
+                if (i !== -1) state.items[i] = { ...state.items[i], name: p.name, description: p.description, techStack: p.techStack, color: p.color };
+                if (state.currentProject?._id === p._id) {
+                    Object.assign(state.currentProject, { name: p.name, description: p.description, techStack: p.techStack, color: p.color });
+                }
+            })
+            .addCase(deleteProject.fulfilled, (state, action) => {
+                state.items = state.items.filter((p) => p._id !== action.payload);
+                if (state.currentProject?._id === action.payload) state.currentProject = null;
+            })
             .addCase(createProject.pending, (state) => {
                 state.createLoading = true;
             })
@@ -219,10 +256,6 @@ const projectSlice = createSlice({
             .addCase(createProject.rejected, (state, action) => {
                 state.createLoading = false;
                 state.error = action.payload?.message;
-            })
-            .addCase(addTaskToColumn.pending, (state) => {
-                // Optional: add a small loading state if you want to disable 
-                // the "Add Item" button while it saves
             })
             .addCase(addTaskToColumn.fulfilled, (state, action) => {
                 const { newTask, columnId } = action.payload;
@@ -250,10 +283,14 @@ const projectSlice = createSlice({
                 if (state.currentProject?.kanban?.[columnId]) {
                     const index = state.currentProject.kanban[columnId].findIndex(t => t._id === updatedTask._id);
                     if (index !== -1) {
-                        state.currentProject.kanban[columnId][index] = updatedTask;
+                        const existing = state.currentProject.kanban[columnId][index];
+                        state.currentProject.kanban[columnId][index] = {
+                            ...existing,
+                            ...updatedTask,
+                            userId: existing.userId,
+                            focusMinutes: existing.focusMinutes,
+                        };
                     }
-                } else {
-                    console.warn(`Column "${columnId}" not found in currentProject state.`);
                 }
             })
             .addCase(deleteTask.fulfilled, (state, action) => {
@@ -299,30 +336,22 @@ const projectSlice = createSlice({
                         state.currentProject.kanban[col].filter(t => !idSet.has(t._id));
                 }
             })
-            .addCase(moveTaskBetweenColumns.pending, (state) => {
-                state.moveLoading = true;
-            })
-            .addCase(moveTaskBetweenColumns.fulfilled, (state, action) => {
-                state.moveLoading = false; // Reset loading
-                const { taskId, fromColumn, toColumn } = action.payload;
-
-                if (state.currentProject) {
-                    const taskToMove = state.currentProject.kanban[fromColumn].find(t => t._id === taskId);
-                    if (taskToMove) {
-                        state.currentProject.kanban[fromColumn] = state.currentProject.kanban[fromColumn]
-                            .filter(t => t._id !== taskId);
-                        
-                        state.currentProject.kanban[toColumn].push({
-                            ...taskToMove,
-                            kanban: toColumn,
-                            // Ensure status is updated locally if needed
-                            status: toColumn === 'done' ? 'Completed' : toColumn === 'doing' ? 'On-Going' : 'In Progress'
-                        });
-                    }
-                }
+            .addCase(moveTaskBetweenColumns.pending, (state, action) => {
+                const { taskId, fromColumn, toColumn } = action.meta.arg;
+                const board = state.currentProject?.kanban;
+                const card = board?.[fromColumn]?.find((t) => t._id === taskId);
+                if (!card || !board[toColumn]) return;
+                board[fromColumn] = board[fromColumn].filter((t) => t._id !== taskId);
+                board[toColumn].push({ ...card, kanban: toColumn });
             })
             .addCase(moveTaskBetweenColumns.rejected, (state, action) => {
-                state.moveLoading = false;
+                const { taskId, fromColumn, toColumn } = action.meta.arg;
+                const board = state.currentProject?.kanban;
+                const card = board?.[toColumn]?.find((t) => t._id === taskId);
+                if (card && board[fromColumn]) {
+                    board[toColumn] = board[toColumn].filter((t) => t._id !== taskId);
+                    board[fromColumn].push({ ...card, kanban: fromColumn });
+                }
                 state.error = action.payload?.message;
             })
             .addCase(moveSelectedTasks.rejected, (state) => {

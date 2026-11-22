@@ -1,339 +1,257 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { BarLoader } from 'react-spinners';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Zap, ListTodo } from 'lucide-react';
-import { fetchPlannerByDate, setActiveDate } from '../../store/slices/plannerSlice';
-import { fetchTodayStats } from '../../store/slices/analyticsSlice';
-import './calendar.css';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import API from '../../api/axiosInstance';
+import { setActiveDate } from '../../store/slices/plannerSlice';
+import { resolveEntry } from '../../utils/Planner';
+import {
+    addMinutesToTime, dailyGoalOf, formatDuration, formatGoal, fromDateKey, shiftDateKey, toDateKey, tzOffset,
+} from '../../utils/Format';
+import './Calendar.css';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = [
-    'January','February','March','April','May','June',
-    'July','August','September','October','November','December'
-];
-const CATEGORY_COLORS = {
-    General: '#64748b', Watch: '#ec4899', Practice: '#8b5cf6',
-    Read: '#3b82f6', Note: '#f59e0b', Project: '#22c55e',
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const monthName = (d) => d.toLocaleDateString('en-GB', { month: 'long' });
+
+const mondayOf = (key) => {
+    const d = fromDateKey(key);
+    return shiftDateKey(key, -((d.getDay() + 6) % 7));
 };
 
-const toDateStr = (year, month, day) =>
-    `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-const todayStr = () => new Date().toISOString().split('T')[0];
-
-const formatMins = (mins) => {
-    if (!mins) return '0m';
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+const buildCells = (view, anchor) => {
+    if (view === 'week') return Array.from({ length: 7 }, (_, i) => shiftDateKey(mondayOf(anchor), i));
+    const first = fromDateKey(anchor);
+    first.setDate(1);
+    const start = mondayOf(toDateKey(first));
+    return Array.from({ length: 42 }, (_, i) => shiftDateKey(start, i));
 };
 
-const formatDisplayDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+const entryStatus = (entry, dayKey, today) => {
+    const r = resolveEntry(entry);
+    if (!r) return 'Planned';
+    if (r.state === 'done') return 'Done';
+    if (r.state === 'now') return 'In progress';
+    if (dayKey === today) return 'Up next';
+    return dayKey < today ? 'Not done' : 'Planned';
 };
 
-const buildCalendarGrid = (year, month) => {
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const daysInPrev = new Date(year, month, 0).getDate();
-    const cells = [];
-
-    for (let i = firstDay - 1; i >= 0; i--) {
-        const d = daysInPrev - i;
-        const prevMonth = month === 0 ? 11 : month - 1;
-        const prevYear  = month === 0 ? year - 1 : year;
-        cells.push({ day: d, month: prevMonth, year: prevYear, current: false });
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-        cells.push({ day: d, month, year, current: true });
-    }
-    const remaining = 42 - cells.length;
-    const nextMonth = month === 11 ? 0 : month + 1;
-    const nextYear  = month === 11 ? year + 1 : year;
-    for (let d = 1; d <= remaining; d++) {
-        cells.push({ day: d, month: nextMonth, year: nextYear, current: false });
-    }
-    return cells;
-};
+const sortByTime = (a, b) => (a.time || '99:99').localeCompare(b.time || '99:99');
 
 const Calendar = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
+    const profile = useSelector((s) => s.user.profile);
+    const today = toDateKey();
+    const [view, setView] = useState('month');
+    const [anchor, setAnchor] = useState(today);
+    const [selected, setSelected] = useState(today);
+    const [entriesByDay, setEntriesByDay] = useState({});
+    const [focusByDay, setFocusByDay] = useState({});
+    const [loading, setLoading] = useState(true);
+    const goal = dailyGoalOf(profile);
 
-    const today = todayStr();
-    const [viewYear, setViewYear]   = useState(new Date().getFullYear());
-    const [viewMonth, setViewMonth] = useState(new Date().getMonth());
-    const [selectedDate, setSelectedDate] = useState(today);
+    const cells = useMemo(() => buildCells(view, anchor), [view, anchor]);
+    const rangeFrom = cells[0];
+    const rangeTo = cells[cells.length - 1];
 
-    const { dayData, loading: plannerLoading } = useSelector(state => state.planner);
-    // Use analytics slice — it holds date-specific stats
-    const { today: dayStats, loading: statsLoading } = useSelector(state => state.analytics);
-
-    const grid = useMemo(() => buildCalendarGrid(viewYear, viewMonth), [viewYear, viewMonth]);
-
-    // Fetch planner + stats for the selected date whenever it changes
-    useEffect(() => {
-        dispatch(fetchPlannerByDate(selectedDate));
-        dispatch(setActiveDate(selectedDate));
-        dispatch(fetchTodayStats(selectedDate));
-    }, [dispatch, selectedDate]);
-
-    const prevMonth = useCallback(() => {
-        setViewMonth(m => {
-            if (m === 0) { setViewYear(y => y - 1); return 11; }
-            return m - 1;
-        });
-    }, []);
-
-    const nextMonth = useCallback(() => {
-        setViewMonth(m => {
-            if (m === 11) { setViewYear(y => y + 1); return 0; }
-            return m + 1;
-        });
-    }, []);
-
-    const goToToday = () => {
-        const now = new Date();
-        setViewYear(now.getFullYear());
-        setViewMonth(now.getMonth());
-        setSelectedDate(today);
-    };
-
-    const handleDayClick = (cell) => {
-        const dateStr = toDateStr(cell.year, cell.month, cell.day);
-        setSelectedDate(dateStr);
-        if (!cell.current) {
-            setViewYear(cell.year);
-            setViewMonth(cell.month);
+    const load = useCallback(async (from, to, signal) => {
+        setLoading(true);
+        try {
+            const tz = tzOffset();
+            const [plan, stats] = await Promise.all([
+                API.get('/planner/range', { params: { from, to }, signal }),
+                API.get('/stats/range', {
+                    params: { from: `${from}T00:00:00${tz}`, to: `${shiftDateKey(to, 1)}T00:00:00${tz}`, tz },
+                    signal,
+                }),
+            ]);
+            const busy = (plan.data.days || []).map((d) => d.date);
+            const details = await Promise.all(busy.map((date) => API.get(`/planner/${date}`, { signal })
+                .then((r) => [date, (r.data.tasks || []).filter((t) => t.taskId)])
+                .catch(() => [date, []])));
+            setEntriesByDay(Object.fromEntries(details));
+            setFocusByDay(Object.fromEntries((stats.data.days || []).map((d) => [d.date, d.minutes])));
+        } catch (err) {
+            if (err?.name !== 'CanceledError') {
+                setEntriesByDay({});
+                setFocusByDay({});
+            }
+        } finally {
+            if (!signal.aborted) setLoading(false);
         }
+    }, []);
+
+    useEffect(() => {
+        const ctl = new AbortController();
+        load(rangeFrom, rangeTo, ctl.signal);
+        return () => ctl.abort();
+    }, [load, rangeFrom, rangeTo]);
+
+    const shift = (dir) => {
+        if (view === 'week') {
+            const next = shiftDateKey(anchor, dir * 7);
+            setAnchor(next);
+            setSelected(next);
+            return;
+        }
+        const d = fromDateKey(anchor);
+        d.setDate(1);
+        d.setMonth(d.getMonth() + dir);
+        const key = toDateKey(d);
+        setAnchor(key);
+        setSelected(key.slice(0, 7) === today.slice(0, 7) ? today : key);
     };
 
-    const selectedTasks = dayData?.tasks || [];
-    const isSelectedToday = selectedDate === today;
+    const goToday = () => {
+        setAnchor(today);
+        setSelected(today);
+    };
 
-    // Label for the stats card header
-    const statsDateLabel = isSelectedToday
-        ? 'Today · Live'
-        : formatDisplayDate(selectedDate).split(',')[0];
+    const pick = (key) => {
+        setSelected(key);
+        if (view === 'month' && key.slice(0, 7) !== anchor.slice(0, 7)) setAnchor(key);
+    };
+
+    const planDay = () => {
+        dispatch(setActiveDate(selected));
+        navigate('/dashboard');
+    };
+
+    const anchorDate = fromDateKey(anchor);
+    const heading = view === 'week'
+        ? (() => {
+            const a = fromDateKey(cells[0]);
+            const b = fromDateKey(cells[6]);
+            return a.getMonth() === b.getMonth()
+                ? `${a.getDate()}–${b.getDate()} ${monthName(b)} ${b.getFullYear()}`
+                : `${a.getDate()} ${monthName(a).slice(0, 3)} – ${b.getDate()} ${monthName(b).slice(0, 3)} ${b.getFullYear()}`;
+        })()
+        : `${monthName(anchorDate)} ${anchorDate.getFullYear()}`;
+
+    const selDate = fromDateKey(selected);
+    const selEntries = [...(entriesByDay[selected] || [])].sort(sortByTime);
+    const selFocus = focusByDay[selected] || 0;
+    const selPct = Math.round((selFocus / goal) * 100);
+    const selSub = selected === today ? 'Today' : selected < today ? 'Past day' : 'Upcoming';
+    const chipLimit = view === 'week' ? 8 : 2;
 
     return (
-        <div className="calendar-container">
-            <div className="calendar-page-header">
-                <div>
-                    <h1>Calendar</h1>
-                    <p>View your scheduled tasks and daily productivity</p>
-                </div>
-            </div>
-
-            <div className="calendar-layout">
-                {/* ── Monthly grid ── */}
-                <div className="calendar-panel">
-                    <div className="calendar-nav">
-                        <button className="calendar-nav-btn" onClick={prevMonth}>
-                            <ChevronLeft size={16} /> Prev
+        <div className="page">
+            <div className="page-inner">
+                <header className="cal-header">
+                    <h1 className="cal-title" aria-live="polite">{heading}</h1>
+                    <div className="cal-nav">
+                        <button type="button" aria-label={view === 'week' ? 'Previous week' : 'Previous month'} onClick={() => shift(-1)}>
+                            <ChevronLeft size={16} />
                         </button>
-                        <span className="calendar-month-label">
-                            {MONTHS[viewMonth]} {viewYear}
-                        </span>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button className="calendar-nav-btn today-btn" onClick={goToToday}>Today</button>
-                            <button className="calendar-nav-btn" onClick={nextMonth}>
-                                Next <ChevronRight size={16} />
-                            </button>
-                        </div>
+                        <button type="button" className="cal-nav-today" onClick={goToday}>Today</button>
+                        <button type="button" aria-label={view === 'week' ? 'Next week' : 'Next month'} onClick={() => shift(1)}>
+                            <ChevronRight size={16} />
+                        </button>
                     </div>
-
-                    <div className="calendar-weekdays">
-                        {WEEKDAYS.map(d => (
-                            <div key={d} className="calendar-weekday">{d}</div>
-                        ))}
+                    <div role="group" aria-label="View" className="segmented">
+                        <button type="button" className="segmented-option" aria-pressed={view === 'month'} onClick={() => { setView('month'); setAnchor(selected); }}>Month</button>
+                        <button type="button" className="segmented-option" aria-pressed={view === 'week'} onClick={() => { setView('week'); setAnchor(selected); }}>Week</button>
                     </div>
+                </header>
 
-                    <div className="calendar-grid">
-                        {grid.map((cell, i) => {
-                            const dateStr    = toDateStr(cell.year, cell.month, cell.day);
-                            const isToday    = dateStr === today;
-                            const isSelected = dateStr === selectedDate;
-                            const isOther    = !cell.current;
-
-                            return (
-                                <div
-                                    key={i}
-                                    className={[
-                                        'calendar-day',
-                                        isOther    ? 'other-month' : '',
-                                        isToday    ? 'is-today'    : '',
-                                        isSelected ? 'is-selected' : '',
-                                    ].join(' ')}
-                                    onClick={() => handleDayClick(cell)}
-                                >
-                                    <div className="day-number">{cell.day}</div>
-                                    {isSelected && selectedTasks.length > 0 && (
-                                        <div className="day-task-pills">
-                                            {selectedTasks.slice(0, 2).map((entry, idx) => {
-                                                const task = entry.taskId;
-                                                const cat  = task?.category?.toLowerCase() || 'general';
-                                                return (
-                                                    <div key={idx} className={`day-task-pill ${cat}`}>
-                                                        {task?.title || 'Task'}
-                                                    </div>
-                                                );
-                                            })}
-                                            {selectedTasks.length > 2 && (
-                                                <div className="day-overflow">
-                                                    +{selectedTasks.length - 2} more
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {isToday && dayStats.totalMinutes > 0 && isSelected && (
-                                        <div
-                                            className="day-productivity-dot"
-                                            style={{ background: '#22c55e' }}
-                                            title={`${formatMins(dayStats.totalMinutes)} today`}
-                                        />
-                                    )}
+                <div className="cal-layout">
+                    <section className="cal-grid-card" aria-label={heading} aria-busy={loading}>
+                        <div className="cal-scroll">
+                            <div className="cal-inner">
+                                <div className="cal-weekdays" aria-hidden="true">
+                                    {WEEKDAYS.map((w) => <span key={w}>{w}</span>)}
                                 </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* ── Side panel ── */}
-                <div className="calendar-side-panel">
-                    {/* Stats card for the SELECTED date */}
-                    <div className="side-panel-card">
-                        <div className="side-panel-header">
-                            <h3>
-                                <Zap size={14} style={{ marginRight: '0.35rem', verticalAlign: 'middle' }} />
-                                Productivity Stats
-                            </h3>
-                            <span className="side-panel-date-label">{statsDateLabel}</span>
-                        </div>
-                        <div className="side-panel-body">
-                            {statsLoading ? (
-                                <div style={{ padding: '1rem 0' }}>
-                                    <BarLoader color="#3b82f6" width="100%" />
-                                </div>
-                            ) : (
-                                <div className="day-stats-grid">
-                                    <div className="day-stat-item">
-                                        <span className="day-stat-label">Productive Time</span>
-                                        <span className="day-stat-value">{formatMins(dayStats.totalMinutes)}</span>
-                                        <span className="day-stat-sub">total for this day</span>
-                                    </div>
-                                    <div className="day-stat-item">
-                                        <span className="day-stat-label">Efficiency</span>
-                                        <span className="day-stat-value">
-                                            {Math.round(dayStats.efficiencyScore * 100)}%
-                                        </span>
-                                        <span className="day-stat-sub">of 8h goal</span>
-                                    </div>
-                                    <div className="day-stat-item">
-                                        <span className="day-stat-label">Sessions</span>
-                                        <span className="day-stat-value">{dayStats.sessionsCount}</span>
-                                        <span className="day-stat-sub">completed</span>
-                                    </div>
-                                    <div className="day-stat-item">
-                                        <span className="day-stat-label">Remaining</span>
-                                        <span className="day-stat-value">
-                                            {formatMins(Math.max(0, 480 - dayStats.totalMinutes))}
-                                        </span>
-                                        <span className="day-stat-sub">to 8h</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Scheduled tasks */}
-                    <div className="side-panel-card">
-                        <div className="side-panel-header">
-                            <h3>
-                                <ListTodo size={14} style={{ marginRight: '0.35rem', verticalAlign: 'middle' }} />
-                                Scheduled Tasks
-                            </h3>
-                            <span className="side-panel-date-label">
-                                {formatDisplayDate(selectedDate).split(',')[0]}
-                            </span>
-                        </div>
-                        <div className="side-panel-body" style={{ padding: '0.875rem 1.25rem' }}>
-                            {plannerLoading ? (
-                                <div style={{ padding: '1rem 0' }}>
-                                    <BarLoader color="#3b82f6" width="100%" />
-                                </div>
-                            ) : selectedTasks.length > 0 ? (
-                                <div className="side-task-list">
-                                    {selectedTasks.map((entry, idx) => {
-                                        const task = entry.taskId;
-                                        if (!task) return null;
-                                        const cat = task.category || 'General';
+                                <div className={`cal-cells ${view === 'week' ? 'is-week' : ''}`}>
+                                    {cells.map((key) => {
+                                        const d = fromDateKey(key);
+                                        const inMonth = view === 'week' || key.slice(0, 7) === anchor.slice(0, 7);
+                                        const entries = [...(entriesByDay[key] || [])].sort(sortByTime);
+                                        const focus = focusByDay[key] || 0;
+                                        const isToday = key === today;
+                                        const isSel = key === selected;
                                         return (
-                                            <div
-                                                key={entry._id || idx}
-                                                className="side-task-item"
-                                                onClick={() => navigate(`/tasks/${task._id}`)}
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                className={`cal-cell ${inMonth ? '' : 'is-out'} ${isSel ? 'is-selected' : ''}`}
+                                                aria-pressed={isSel}
+                                                aria-label={`${d.getDate()} ${monthName(d)}${isToday ? ', today' : ''}${entries.length ? `, ${entries.length} planned` : ''}${focus ? `, ${formatDuration(focus)} focused` : ''}`}
+                                                onClick={() => pick(key)}
                                             >
-                                                <div
-                                                    className="side-task-category-dot"
-                                                    style={{ background: CATEGORY_COLORS[cat] || '#64748b' }}
-                                                />
-                                                <div className="side-task-info">
-                                                    <div className="side-task-title">{task.title}</div>
-                                                    <div className="side-task-meta">
-                                                        {cat}{task.groupId?.name && ` · ${task.groupId.name}`}
-                                                    </div>
-                                                </div>
-                                                {entry.time && (
-                                                    <span className="side-task-time">{entry.time}</span>
+                                                <span className={`cal-num ${isToday ? 'is-today' : ''}`}>{d.getDate()}</span>
+                                                {focus > 0 && (
+                                                    <span className="cal-focus">
+                                                        <span className="cal-focus-bar" style={{ width: Math.max(6, Math.round(Math.min(focus, 240) / 240 * 60)) }} />
+                                                        {formatDuration(focus)}
+                                                    </span>
                                                 )}
-                                            </div>
+                                                {entries.slice(0, chipLimit).map((e) => {
+                                                    const r = resolveEntry(e);
+                                                    return (
+                                                        <span key={e._id} className="cal-chip">
+                                                            <span className="cal-chip-dot" style={{ background: r?.color }} />
+                                                            {r?.title || 'Task'}
+                                                        </span>
+                                                    );
+                                                })}
+                                                {entries.length > chipLimit && <span className="cal-more">+{entries.length - chipLimit} more</span>}
+                                            </button>
                                         );
                                     })}
                                 </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <aside className="cal-side">
+                        <section className="card cal-day" aria-labelledby="cal-day-h">
+                            <div className="cal-day-head">
+                                <span className="cal-day-sub">{selSub}</span>
+                                <h2 id="cal-day-h">{DAY_NAMES[selDate.getDay()]} {selDate.getDate()} {monthName(selDate)}</h2>
+                            </div>
+                            {selEntries.length ? (
+                                <ol className="cal-events">
+                                    {selEntries.map((e) => {
+                                        const r = resolveEntry(e);
+                                        const time = e.time ? `${e.time}–${addMinutesToTime(e.time, e.duration || 30)}` : 'Any time';
+                                        return (
+                                            <li key={e._id} className="cal-event">
+                                                <span className="cal-event-bar" style={{ background: r?.color }} aria-hidden="true" />
+                                                <div className="cal-event-text">
+                                                    <span className="cal-event-title">{r?.title || 'Task'}</span>
+                                                    <span className="cal-event-meta">
+                                                        {time} · {entryStatus(e, selected, today)}
+                                                        {e.taskType === 'projectTask' && r?.group ? ` · ${r.group}` : ''}
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                </ol>
                             ) : (
-                                <div className="side-empty-state">
-                                    <CalendarIcon size={28} strokeWidth={1.5} />
-                                    <p>No tasks scheduled</p>
-                                    <small>
-                                        {isSelectedToday
-                                            ? 'Add tasks from the Dashboard.'
-                                            : 'No tasks were scheduled for this date.'}
-                                    </small>
+                                <div className="cal-empty">
+                                    <span className="cal-empty-title">{loading ? 'Loading…' : 'Nothing scheduled'}</span>
+                                    {!loading && <span className="cal-empty-help">Add tasks to this day to plan it out.</span>}
                                 </div>
                             )}
+                            <button type="button" className="btn btn-primary cal-plan-btn" onClick={planDay}>
+                                <Plus size={16} strokeWidth={2.4} aria-hidden="true" /> Plan this day
+                            </button>
+                        </section>
 
-                            {isSelectedToday && (
-                                <button
-                                    className="btn-go-to-date"
-                                    onClick={() => navigate('/dashboard')}
-                                >
-                                    Open Today's Planner
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Selected date chip */}
-                    <div className="side-panel-card">
-                        <div className="side-panel-body" style={{ padding: '0.875rem 1.25rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <Clock size={14} color="var(--soft-text)" />
-                                <span style={{ fontSize: '0.8rem', color: 'var(--soft-text)', fontWeight: 500 }}>
-                                    Selected
-                                </span>
+                        <section className="card cal-stat" aria-labelledby="cal-stat-h">
+                            <h2 id="cal-stat-h" className="card-title sm">That day's focus</h2>
+                            <dl className="cal-stat-grid">
+                                <div><dt>Focus time</dt><dd className="tabular">{formatDuration(selFocus)}</dd></div>
+                                <div><dt>Of {formatGoal(goal)} goal</dt><dd className="tabular">{selPct}%</dd></div>
+                            </dl>
+                            <div className="progress cal-stat-bar" role="img" aria-label={`${selPct} percent of daily goal`}>
+                                <span style={{ width: `${Math.min(100, selPct)}%` }} />
                             </div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--dark-text)', marginTop: '0.3rem' }}>
-                                {formatDisplayDate(selectedDate)}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--light-text)', marginTop: '0.15rem' }}>
-                                {selectedTasks.length} task{selectedTasks.length !== 1 ? 's' : ''} scheduled
-                            </div>
-                        </div>
-                    </div>
+                        </section>
+                    </aside>
                 </div>
             </div>
         </div>

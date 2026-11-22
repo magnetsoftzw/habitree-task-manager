@@ -9,15 +9,17 @@ const rolloverIncompleteItems = require('../utils/rolloverLogic');
 // @route   POST /api/tasks
 exports.createTask = async (req, res) => {
     try {
-        const { title, description, groupId, category, subtasks } = req.body;
+        const { title, description, groupId, category, subtasks, scheduledDate, status } = req.body;
 
         const task = await Task.create({
             userId: req.user.id,
             title,
-            description, 
-            groupId,
+            description,
+            groupId: groupId || null,
             category,
-            subtasks
+            subtasks,
+            scheduledDate: scheduledDate || null,
+            ...(status && { status }),
         });
 
         res.status(201).json(task);
@@ -96,13 +98,14 @@ exports.getGroupedTasks = async (req, res) => {
 // @route   PUT /api/tasks/:id
 exports.updateTask = async (req, res) => {
     try {
-        const task = await Task.findOneAndUpdate(
-            { _id: req.params.id, userId: req.user.id },
-            req.body,
-            { new: true }
-        );
-
+        const task = await Task.findOne({ _id: req.params.id, userId: req.user.id });
         if (!task) return res.status(404).json({ success: false, message: "Task not found" });
+
+        ['title', 'description', 'groupId', 'category', 'status', 'scheduledDate', 'subtasks'].forEach((key) => {
+            if (req.body[key] !== undefined) task[key] = req.body[key];
+        });
+        await task.save();
+        await task.populate('groupId', 'name color');
         res.json(task);
 
     }catch( error) {
@@ -137,6 +140,7 @@ exports.deleteTask = async (req, res) => {
                     "kanban.backendBacklog": taskId,
                     "kanban.frontendBacklog": taskId,
                     "kanban.mobileBacklog": taskId,
+                    "kanban.design": taskId,
                 }
             });
 
@@ -145,8 +149,8 @@ exports.deleteTask = async (req, res) => {
         }
 
         // 4 Remove Task from any Roadamp Milestone
-        await Roadmap.findOneAndUpdate(
-            { "nodes.id": taskId }, 
+        await Roadmap.updateMany(
+            { userId: req.user.id, "nodes.id": taskId },
             { $pull: { nodes: { id: taskId }, edges: { $or: [{ source: taskId }, { target: taskId }] } } }
         );
 
