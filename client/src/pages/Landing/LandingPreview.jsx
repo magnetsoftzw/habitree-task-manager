@@ -56,7 +56,7 @@ const LandingPreview = () => (
                     <div className="lp-col">
                         <div className="lp-focus">
                             <span>Focus session</span>
-                            <strong>25:00</strong>
+                            <strong>20:00</strong>
                             <small>React Native Practice</small>
                             <div className="lp-focus-btn">Start focus</div>
                         </div>

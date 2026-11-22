@@ -7,14 +7,14 @@ import { TimeField } from '../ui/Fields';
 import Sheet from '../ui/Sheet';
 import { useToast } from '../ui/Toast';
 import MinuteDial from './MinuteDial';
-import { focusMinutesOf, logFocusTime, MAX_FOCUS, MIN_FOCUS, setFocusMinutes } from '../../store/slices/FocusSlice';
+import { FOCUS_MINUTES, focusMinutesOf, logFocusTime, MAX_FOCUS, MIN_FOCUS, setFocusMinutes } from '../../store/slices/FocusSlice';
 import { fetchActivity, fetchRangeStats } from '../../store/slices/StatsSlice';
 import { clock } from '../../utils/Format';
 
 export function FocusLengthSheet({ visible, onClose }) {
   const dispatch = useDispatch();
   const focus = useSelector((s) => s.focus);
-  const [minutes, setMinutes] = useState(25);
+  const [minutes, setMinutes] = useState(FOCUS_MINUTES);
 
   useEffect(() => { if (visible) setMinutes(focusMinutesOf(focus)); }, [visible]);
 
@@ -37,13 +37,13 @@ export function FocusLengthSheet({ visible, onClose }) {
 export function LogTimeSheet({ visible, onClose }) {
   const dispatch = useDispatch();
   const { show } = useToast();
-  const [minutes, setMinutes] = useState(25);
+  const [minutes, setMinutes] = useState(FOCUS_MINUTES);
   const [endTime, setEndTime] = useState(clock(new Date()));
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (visible) { setMinutes(25); setEndTime(clock(new Date())); setError(null); }
+    if (visible) { setMinutes(FOCUS_MINUTES); setEndTime(clock(new Date())); setError(null); }
   }, [visible]);
 
   const submit = async () => {

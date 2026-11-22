@@ -3,12 +3,13 @@ import { TextInput, View } from 'react-native';
 import { Minus, Plus } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { fonts } from '../../theme/Tokens';
+import { FOCUS_PRESETS } from '../../store/slices/FocusSlice';
 import AppText from '../ui/AppText';
 import { Chip, IconButton } from '../ui/Controls';
 
-export const presetLabel = (m) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
+export const presetLabel = (m) => (m <= 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`);
 
-export default function MinuteDial({ value, onChange, min = 1, max = 180, presets = [15, 25, 45, 60, 90], label = 'Minutes' }) {
+export default function MinuteDial({ value, onChange, min = 1, max = 180, presets = FOCUS_PRESETS, label = 'Minutes' }) {
   const { colors } = useTheme();
   const clamp = (v) => Math.max(min, Math.min(max, Math.round(v) || min));
 

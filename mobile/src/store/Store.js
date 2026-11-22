@@ -1,12 +1,12 @@
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
-import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
+import { createMigrate, persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import auth, { logout, sessionExpired } from './slices/AuthSlice';
 import prefs from './slices/PrefsSlice';
 import tasks from './slices/TasksSlice';
 import planner from './slices/PlannerSlice';
-import focus from './slices/FocusSlice';
+import focus, { FOCUS_MINUTES } from './slices/FocusSlice';
 import projects from './slices/ProjectsSlice';
 import projectTasks from './slices/ProjectTasksSlice';
 import roadmaps from './slices/RoadmapsSlice';
@@ -24,7 +24,17 @@ const rootReducer = (state, action) => {
 };
 
 const persisted = persistReducer(
-  { key: 'habitree', storage: AsyncStorage, whitelist: ['auth', 'prefs', 'focus'] },
+  {
+    key: 'habitree',
+    storage: AsyncStorage,
+    whitelist: ['auth', 'prefs', 'focus'],
+    version: 1,
+    migrate: createMigrate({
+      1: (state) => (state?.focus?.minutes === 25 && state.focus.status === 'idle'
+        ? { ...state, focus: { ...state.focus, minutes: FOCUS_MINUTES } }
+        : state),
+    }),
+  },
   rootReducer,
 );
 

@@ -2,7 +2,17 @@ import { useSyncExternalStore } from 'react';
 
 const KEY = 'habitree:focusMinutes';
 const EVENT = 'habitree:focus-length';
-const DEFAULT = 25;
+const DEFAULT = 20;
+const MIGRATED = 'habitree:focusMinutes:v2';
+
+try {
+    if (!localStorage.getItem(MIGRATED)) {
+        if (localStorage.getItem(KEY) === '25') localStorage.setItem(KEY, String(DEFAULT));
+        localStorage.setItem(MIGRATED, '1');
+    }
+} catch {
+    /* storage unavailable */
+}
 
 const read = () => {
     const value = Number(localStorage.getItem(KEY));

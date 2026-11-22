@@ -4,7 +4,7 @@ import Modal from '../../ui/Modal';
 import { getFocusLength, saveFocusLength } from '../../../hooks/UseFocusLength';
 import './Session.css';
 
-const PRESETS = [15, 25, 45, 60, 90];
+const PRESETS = [20, 30, 40, 50, 60];
 const MIN = 1;
 const MAX = 180;
 
@@ -54,7 +54,7 @@ const SessionSettingsDialog = ({ onClose, onStart, taskTitle }) => {
                 <div role="group" aria-label="Presets" className="ss-presets">
                     {PRESETS.map((p) => (
                         <button key={p} type="button" className="ss-preset" aria-pressed={minutes === p} onClick={() => setMinutes(p)}>
-                            {p < 60 ? `${p} min` : `${p / 60 === 1 ? '1 h' : `${p / 60} h`}`}
+                            {p} min
                         </button>
                     ))}
                 </div>

@@ -1,7 +1,8 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/Client';
 
-export const FOCUS_MINUTES = 25;
+export const FOCUS_MINUTES = 20;
+export const FOCUS_PRESETS = [20, 30, 40, 50, 60];
 export const BREAK_MINUTES = 5;
 
 export const MIN_FOCUS = 1;
