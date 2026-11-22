@@ -5,7 +5,7 @@ const request = require('supertest');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
 process.env.JWT_SECRET = 'test-secret';
-const createApp = require('../app');
+const createApp = require('../createApp');
 const Planner = require('../models/planner');
 const Session = require('../models/session');
 const ProjectTask = require('../models/projectTask');

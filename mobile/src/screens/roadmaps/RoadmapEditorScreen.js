@@ -7,7 +7,7 @@ import { ExternalLink, Ellipsis, Pencil, Play, Plus, Trash2, X } from 'lucide-re
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius } from '../../theme/Tokens';
 import AppText from '../../components/ui/AppText';
-import { Button, EmptyState, IconButton, StatusPill } from '../../components/ui/Controls';
+import { Button, EmptyState, IconButton, ProgressBar, StatusPill } from '../../components/ui/Controls';
 import { BackHeader, PromptSheet, Screen } from '../../components/ui/Layout';
 import { OptionSheet } from '../../components/ui/Sheet';
 import { useToast } from '../../components/ui/Toast';
@@ -17,6 +17,7 @@ import { deleteRoadmap, editCurrent, fetchRoadmap, saveRoadmap, toPayloadEdges, 
 import { fetchInventory, setTaskStatus } from '../../store/slices/TasksSlice';
 import { isOverdue, longDate } from '../../utils/Format';
 import { TASK_STATUSES, TASK_STATUS_LABELS } from '../../utils/Status';
+import { roadmapProgress } from '../../utils/Roadmap';
 
 const NODE_WIDTH = 260;
 const GAP = 58;
@@ -175,6 +176,25 @@ export default function RoadmapEditorScreen({ route, navigation }) {
           <IconButton icon={Plus} label="Add task" variant="accent" onPress={() => setAdding(true)} />
         </View>
       </BackHeader>
+
+      {nodes.length > 0 && (() => {
+        const overall = roadmapProgress(nodes);
+        return (
+          <View
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel={`Roadmap progress ${overall.percent} percent, ${overall.done} of ${overall.total} tasks done`}
+            accessibilityValue={{ min: 0, max: 100, now: overall.percent }}
+            style={{ gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <AppText variant="captionStrong" tone="muted">Overall progress</AppText>
+              <AppText variant="metaStrong" numeric>{overall.percent}% · {overall.done} of {overall.total} done</AppText>
+            </View>
+            <ProgressBar value={overall.percent} height={8} />
+          </View>
+        );
+      })()}
 
       {linkFrom && (
         <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingLeft: 16, paddingRight: 8, backgroundColor: colors.accentSoft }}>

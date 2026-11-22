@@ -19,7 +19,7 @@ import {
     clearActiveRoadmap, deleteRoadmap, fetchRoadmapById, persistRoadmap, updateRoadmapMeta,
 } from '../../store/slices/roadmapSlice';
 import { fetchInventoryTasks, updateTaskStatus } from '../../store/slices/taskSlice';
-import { roadmapProgress } from '../../utils/Roadmap';
+import { roadmapProgress, stepsDone } from '../../utils/Roadmap';
 import { formatDueDate, toDateKey } from '../../utils/Format';
 import './RoadmapCanvas.css';
 
@@ -247,8 +247,23 @@ const Editor = ({ roadmap }) => {
                 <div className="rm-toolbar-title">
                     <h1>{roadmap.skillName}</h1>
                     <span>
-                        {nodes.length} {nodes.length === 1 ? 'task' : 'tasks'} · {edges.length} {edges.length === 1 ? 'link' : 'links'} · {progress}% complete
+                        {nodes.length} {nodes.length === 1 ? 'task' : 'tasks'} · {edges.length} {edges.length === 1 ? 'link' : 'links'}
                     </span>
+                    <div className="rm-meter">
+                        <div
+                            className="progress rm-meter-bar"
+                            role="progressbar"
+                            aria-label="Roadmap progress"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={progress}
+                        >
+                            <span style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className="rm-meter-text tabular">
+                            {progress}% · {stepsDone(progressNodes)} of {nodes.length} {nodes.length === 1 ? 'step' : 'steps'} done
+                        </span>
+                    </div>
                 </div>
                 <SaveState state={saveState} onRetry={() => save(nodes, edges)} />
                 <button type="button" className="btn rm-tool-btn" onClick={autoLayout} disabled={nodes.length < 2}>

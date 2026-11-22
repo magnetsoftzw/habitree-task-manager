@@ -63,6 +63,9 @@ function TaskRow({ task, last, onToggle, onOpen, onFocus }) {
   );
 }
 
+const idTime = (doc) => (doc?._id && /^[a-f0-9]{24}$/i.test(doc._id) ? parseInt(doc._id.slice(0, 8), 16) * 1000 : 0);
+const modifiedAt = (doc) => Date.parse(doc?.updatedAt || doc?.createdAt || '') || idTime(doc);
+
 export default function TasksScreen({ navigation }) {
   const dispatch = useDispatch();
   const { colors } = useTheme();
@@ -96,15 +99,22 @@ export default function TasksScreen({ navigation }) {
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
   };
+  const groupTime = (name) => idTime(groups.find((g) => g.name === name));
   const sections = (groupBy === 'group' ? Object.entries(inventory) : byCategory())
-    .map(([name, list]) => ({
-      name,
-      color: groupBy === 'group' ? colorFor(name, list) : colors.textMuted,
-      rows: list.filter((t) => (filter === 'All' || t.status === filter) && (!q || t.title.toLowerCase().includes(q))),
-      total: list.length,
-    }))
+    .map(([name, list]) => {
+      const rows = list
+        .filter((t) => (filter === 'All' || t.status === filter) && (!q || t.title.toLowerCase().includes(q)))
+        .sort((x, y) => modifiedAt(y) - modifiedAt(x));
+      return {
+        name,
+        color: groupBy === 'group' ? colorFor(name, list) : colors.textMuted,
+        rows,
+        total: list.length,
+        modified: Math.max(groupBy === 'group' ? groupTime(name) : 0, ...list.map(modifiedAt)),
+      };
+    })
     .filter((g) => g.rows.length > 0)
-    .sort((a, b) => (a.name === 'Uncategorized') - (b.name === 'Uncategorized'));
+    .sort((a, b) => b.modified - a.modified);
 
   const groupCount = Object.entries(inventory).filter(([name, list]) => list.length || name !== 'Uncategorized').length;
 

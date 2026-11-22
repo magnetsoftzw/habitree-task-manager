@@ -1,9 +1,13 @@
 export const isNodeDone = (node) => node?.data?.status === 'Completed' || (node?.data?.progress ?? 0) >= 100;
 
+const nodeProgress = (node) => (isNodeDone(node) ? 100 : Math.max(0, Math.min(100, node?.data?.progress || 0)));
+
 export const roadmapProgress = (nodes = []) => {
     if (!nodes.length) return 0;
-    return Math.round((nodes.filter(isNodeDone).length / nodes.length) * 100);
+    return Math.round(nodes.reduce((sum, n) => sum + nodeProgress(n), 0) / nodes.length);
 };
+
+export const stepsDone = (nodes = []) => nodes.filter(isNodeDone).length;
 
 export const nextNode = (nodes = [], edges = []) => {
     const done = new Set(nodes.filter(isNodeDone).map((n) => n.id));

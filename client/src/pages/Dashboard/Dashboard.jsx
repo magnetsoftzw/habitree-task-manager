@@ -36,6 +36,7 @@ import { colorFor, UNCATEGORIZED_COLOR } from '../../utils/Colors';
 import {
     addMinutesToTime, formatDuration, formatLongDate, formatRelative, fromDateKey, greeting, nextHourTime, shiftDateKey, toDateKey, dailyGoalOf, formatGoal,
 } from '../../utils/Format';
+import { roadmapProgress } from '../../utils/Roadmap';
 import './Dashboard.css';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -154,9 +155,7 @@ const Dashboard = () => {
     ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 4), [completions, allTasks]);
 
     const roadmap = roadmaps?.[0];
-    const roadmapProgress = roadmap?.nodes?.length
-        ? Math.round(roadmap.nodes.reduce((sum, n) => sum + (n.data?.progress || 0), 0) / roadmap.nodes.length)
-        : 0;
+    const roadmapPct = roadmapProgress(roadmap?.nodes);
 
     const unread = notifications.filter((n) => !n.isRead).length;
     const dailyGoal = dailyGoalOf(profile);
@@ -509,11 +508,11 @@ const Dashboard = () => {
                                         <div className="dash-roadmap-text">
                                             <span className="dash-roadmap-name">{roadmap.skillName}</span>
                                             <span className="stat-caption">
-                                                {roadmap.nodes?.length || 0} nodes · {roadmap.edges?.length || 0} connections · {roadmapProgress}% complete
+                                                {roadmap.nodes?.length || 0} nodes · {roadmap.edges?.length || 0} connections · {roadmapPct}% complete
                                             </span>
                                         </div>
                                     </div>
-                                    <div className="progress"><span style={{ width: `${roadmapProgress}%` }} /></div>
+                                    <div className="progress" role="img" aria-label={`Roadmap ${roadmapPct} percent complete`}><span style={{ width: `${roadmapPct}%` }} /></div>
                                 </>
                             ) : (
                                 <EmptyState

@@ -13,6 +13,7 @@ import { useToast } from '../../components/ui/Toast';
 import DotGrid from '../../components/roadmaps/DotGrid';
 import { createRoadmap, deleteRoadmap, fetchRoadmaps, saveRoadmap } from '../../store/slices/RoadmapsSlice';
 import { longDate } from '../../utils/Format';
+import { roadmapProgress } from '../../utils/Roadmap';
 
 const hintFor = (r) => {
   const nodes = r.nodes?.length || 0;
@@ -26,7 +27,7 @@ const hintFor = (r) => {
 function RoadmapCard({ roadmap, onOpen, onMenu }) {
   const { colors } = useTheme();
   const nodes = roadmap.nodes || [];
-  const progress = nodes.length ? Math.round(nodes.reduce((sum, n) => sum + (n.data?.progress || 0), 0) / nodes.length) : 0;
+  const { percent: progress } = roadmapProgress(nodes);
   const hint = hintFor(roadmap);
 
   return (

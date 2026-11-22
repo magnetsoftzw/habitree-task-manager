@@ -71,7 +71,7 @@ const setSubtaskDone = async (ref, done, dispatch, getState) => {
   const subtasks = (task.subtasks || []).map((s) => (String(s._id) === String(ref.subtaskId)
     ? { ...s, isCompleted: done, status: done ? 'Completed' : 'Not Started' }
     : s));
-  dispatch(patchInventoryTask({ _id: ref.taskId, subtasks }));
+  dispatch(patchInventoryTask({ _id: ref.taskId, subtasks, updatedAt: new Date().toISOString() }));
   await send({ dispatch, getState }, { method: 'put', url: `/tasks/${ref.taskId}`, body: { subtasks }, kinds: ['tasks'], label: 'A subtask change' });
 };
 

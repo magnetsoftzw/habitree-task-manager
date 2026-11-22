@@ -58,6 +58,36 @@
     color: var(--text-muted);
 }
 
+.rm-meter {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 360px;
+    margin-top: 4px;
+}
+
+.rm-meter-bar {
+    flex: 1 1 auto;
+    min-width: 80px;
+    height: 8px;
+}
+
+.rm-meter-bar > span {
+    transition: width 0.3s ease;
+}
+
+.rm-toolbar-title .rm-meter-text {
+    flex: none;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-meter-bar > span {
+        transition: none;
+    }
+}
+
 .rm-save {
     display: inline-flex;
     align-items: center;

@@ -29,7 +29,10 @@ const FILTERS = [
     { label: 'Done', match: (t) => t.status === 'Completed' },
 ];
 
+const modifiedAt = (t) => new Date(t.updatedAt || t.createdAt || 0).getTime();
+
 const SORTERS = {
+    recent: (a, b) => modifiedAt(b) - modifiedAt(a),
     due: (a, b) => {
         if (!a.scheduledDate && !b.scheduledDate) return a.title.localeCompare(b.title);
         if (!a.scheduledDate) return 1;
@@ -53,7 +56,7 @@ const TaskInventory = () => {
 
     const [query, setQuery] = useState(params.get('q') || '');
     const [groupBy, setGroupBy] = useState('group');
-    const [sort, setSort] = useState('due');
+    const [sort, setSort] = useState('recent');
     const [filter, setFilter] = useState('All');
     const [isCreateOpen, setCreateOpen] = useState(false);
     const [isGroupOpen, setGroupOpen] = useState(false);
@@ -100,11 +103,12 @@ const TaskInventory = () => {
         });
         return [...map.entries()].map(([name, list]) => ({
             name,
+            modified: Math.max(...list.map(modifiedAt)),
             color: groupBy === 'group'
                 ? (name === 'Uncategorized' ? UNCATEGORIZED_COLOR : colorByName[name] || colorFor(list[0]?.groupId))
                 : 'var(--text-faint)',
             rows: [...list].sort(SORTERS[sort]),
-        }));
+        })).sort((a, b) => b.modified - a.modified);
     }, [searched, activeFilter, groupBy, sort, colorByName]);
 
     const groupCount = Object.values(inventory || {}).filter((l) => l.length > 0).length;
@@ -222,6 +226,7 @@ const TaskInventory = () => {
                     <label className="tasks-sort">
                         Sort
                         <select value={sort} onChange={(e) => setSort(e.target.value)}>
+                            <option value="recent">Last modified</option>
                             <option value="due">Due date</option>
                             <option value="progress">Progress</option>
                             <option value="name">Name</option>

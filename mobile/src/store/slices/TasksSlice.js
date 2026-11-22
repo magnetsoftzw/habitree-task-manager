@@ -182,12 +182,13 @@ const tasksSlice = createSlice({
       .addCase(updateTask.pending, (state, action) => {
         const { id, updates } = action.meta.arg;
         const { groupId, ...rest } = updates;
-        replaceTask(state, { _id: id, ...rest });
+        replaceTask(state, { _id: id, ...rest, updatedAt: new Date().toISOString() });
       })
       .addCase(updateTask.fulfilled, (state, action) => replaceTask(state, action.payload))
       .addCase(setTaskStatus.pending, (state, action) => {
         const { id, status } = action.meta.arg;
-        eachTask(state, (t) => { if (t._id === id) t.status = status; });
+        const now = new Date().toISOString();
+        eachTask(state, (t) => { if (t._id === id) { t.status = status; t.updatedAt = now; } });
         if (state.current?._id === id) state.current.status = status;
       })
       .addCase(setTaskStatus.fulfilled, (state, action) => replaceTask(state, action.payload))
