@@ -1,0 +1,114 @@
+.pm-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.pm-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.pm-textarea {
+    height: auto;
+    min-height: 96px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.pm-error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--danger-text);
+}
+
+.pm-colors {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.pm-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.pm-swatch {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.pm-swatch input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.pm-swatch:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.pm-delete {
+    margin-right: auto;
+}
+
+.pm-tech-row {
+    display: flex;
+    gap: 8px;
+}
+
+.pm-tech-row .input {
+    flex: 1;
+    min-width: 0;
+}
+
+.pm-tags {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pm-tags li {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    padding: 2px 4px 2px 8px;
+}
+
+.pm-tags button {
+    width: 22px;
+    height: 22px;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.pm-tags button:hover {
+    color: var(--danger-text);
+}
