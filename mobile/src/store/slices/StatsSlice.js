@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/Client';
 import { addDays, errorMessage, startOfDay, startOfMonth, startOfWeek, tzOffset } from '../../utils/Format';
+import { fetcher, onlineOnly } from '../../sync/Thunks';
 
 export const rangeBounds = (range, now = new Date()) => {
   if (range === 'Today') return { from: startOfDay(now), to: addDays(startOfDay(now), 1) };
@@ -25,12 +26,12 @@ export const fetchRangeStats = createAsyncThunk('stats/range', async (key, { rej
     const [y, m] = key.split('-').map(Number);
     return { key, data: await getRange(new Date(y, m - 1, 1), new Date(y, m, 1)) };
   } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not load your stats'));
+    return rejectWithValue(error.response ? errorMessage(error, 'Could not load your stats') : null);
   }
-});
+}, onlineOnly);
 
-export const fetchTaskVolume = createAsyncThunk('stats/volume', async () => (await API.get('/stats/tasks')).data);
-export const fetchActivity = createAsyncThunk('stats/activity', async () => (await API.get('/stats/activity')).data.activity);
+export const fetchTaskVolume = fetcher('stats/volume', async () => (await API.get('/stats/tasks')).data);
+export const fetchActivity = fetcher('stats/activity', async () => (await API.get('/stats/activity')).data.activity);
 
 const statsSlice = createSlice({
   name: 'stats',
@@ -46,7 +47,7 @@ const statsSlice = createSlice({
       })
       .addCase(fetchRangeStats.rejected, (state, action) => {
         state.loading[action.meta.arg] = false;
-        state.error = action.payload;
+        state.error = state.ranges[action.meta.arg] ? null : action.payload;
       })
       .addCase(fetchTaskVolume.fulfilled, (state, action) => { state.volume = action.payload; })
       .addCase(fetchActivity.fulfilled, (state, action) => { state.activity = action.payload; });

@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const Task = require('../models/task');
 const Group = require('../models/group');
 const Project = require('../models/project');
@@ -12,6 +13,7 @@ exports.createTask = async (req, res) => {
         const { title, description, groupId, category, subtasks, scheduledDate, status } = req.body;
 
         const task = await Task.create({
+            ...withClientId(req.body),
             userId: req.user.id,
             title,
             description,

@@ -1,7 +1,7 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import API from '../api/Client';
 import { errorMessage } from '../utils/Format';
-import { setTaskStatus } from './slices/TasksSlice';
+import { send } from '../sync/SyncEngine';
+import { patchInventoryTask, setTaskStatus } from './slices/TasksSlice';
 import { updateProjectTask, updateSubtask } from './slices/ProjectTasksSlice';
 import { markEntrySubtask, markEntryTask } from './slices/PlannerSlice';
 import { fetchActivity } from './slices/StatsSlice';
@@ -56,15 +56,23 @@ const setSubtaskDone = async (ref, done, dispatch, getState) => {
     if (loaded) {
       await dispatch(updateSubtask({ projectId: ref.projectId, taskId: ref.taskId, subtaskId: ref.subtaskId, updates: { done } })).unwrap();
     } else {
-      await API.patch(`/projects/${ref.projectId}/tasks/${ref.taskId}/subtasks/${ref.subtaskId}`, { done });
+      await send({ dispatch, getState }, { method: 'patch', url: `/projects/${ref.projectId}/tasks/${ref.taskId}/subtasks/${ref.subtaskId}`, body: { done }, kinds: [`projectTasks:${ref.projectId}`], label: 'A subtask change' });
     }
     return;
   }
-  const { data: task } = await API.get(`/tasks/${ref.taskId}`);
+  const state = getState();
+  let task = Object.values(state.tasks.inventory).flat().find((t) => t._id === ref.taskId)
+    || (state.tasks.current?._id === ref.taskId ? state.tasks.current : null);
+  if (!task) {
+    const entry = Object.values(state.planner.byDate).flat().find((e) => e.taskId?._id === ref.taskId);
+    task = entry?.taskId;
+  }
+  if (!task) throw new Error('That task is not saved on this phone yet');
   const subtasks = (task.subtasks || []).map((s) => (String(s._id) === String(ref.subtaskId)
     ? { ...s, isCompleted: done, status: done ? 'Completed' : 'Not Started' }
     : s));
-  await API.put(`/tasks/${ref.taskId}`, { subtasks });
+  dispatch(patchInventoryTask({ _id: ref.taskId, subtasks }));
+  await send({ dispatch, getState }, { method: 'put', url: `/tasks/${ref.taskId}`, body: { subtasks }, kinds: ['tasks'], label: 'A subtask change' });
 };
 
 export const setRefDone = createAsyncThunk('tasks/setRefDone', async ({ ref, done, previousStatus }, { dispatch, getState, rejectWithValue }) => {
@@ -87,7 +95,7 @@ export const setRefDone = createAsyncThunk('tasks/setRefDone', async ({ ref, don
       if (loaded) {
         await dispatch(updateProjectTask({ projectId: ref.projectId, taskId: ref.taskId, updates: { status: done ? 'done' : 'not_started' } })).unwrap();
       } else {
-        await API.patch(`/projects/${ref.projectId}/tasks/${ref.taskId}`, { status: done ? 'done' : 'not_started' });
+        await send({ dispatch, getState }, { method: 'patch', url: `/projects/${ref.projectId}/tasks/${ref.taskId}`, body: { status: done ? 'done' : 'not_started' }, kinds: [`projectTasks:${ref.projectId}`], label: 'A task status change' });
       }
     } else {
       await dispatch(setTaskStatus({ id: ref.taskId, status: taskStatus, previous: previousStatus })).unwrap();

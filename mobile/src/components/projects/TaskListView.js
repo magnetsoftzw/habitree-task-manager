@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  ArrowDown, ArrowUp, ArrowUpToLine, CalendarDays, CalendarPlus, ChevronRight, Ellipsis, FolderInput, Pencil, Play, Plus, Trash2,
+  ArchiveRestore, ArrowDown, ArrowUp, ArrowUpToLine, CalendarDays, CalendarPlus, ChevronRight, Ellipsis, FolderInput, Pencil, Play, Plus, Trash2,
 } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { fonts, radius } from '../../theme/Tokens';
@@ -29,6 +29,7 @@ const FILTERS = [
   { key: 'not_started', label: 'Not started' },
   { key: 'in_progress', label: 'In progress' },
   { key: 'done', label: 'Done' },
+  { key: 'shelved', label: 'Shelved' },
 ];
 
 const move = (list, from, to) => {
@@ -122,6 +123,7 @@ function ListTask({ task, index, count, expanded, plannedOn, onToggleOpen, onMen
               {subs.length ? `${doneSubs} / ${subs.length} subtasks` : 'No subtasks'}
               {task.dueDate && !overdue ? ` · Due ${shortDate(task.dueDate)}` : ''}
               {task.status === 'in_progress' ? ' · In progress' : ''}
+              {task.status === 'shelved' ? ' · Shelved' : ''}
             </AppText>
             {overdue && <AppText variant="caption" color={colors.dangerText} style={{ fontFamily: fonts.medium }}>Overdue · {shortDate(task.dueDate)}</AppText>}
             {plannedOn && (
@@ -158,6 +160,7 @@ function ListTask({ task, index, count, expanded, plannedOn, onToggleOpen, onMen
                 style={{ flex: 1, minHeight: 44, justifyContent: 'center' }}
               >
                 <AppText variant="body" color={s.done ? colors.textMuted : colors.text} style={s.done && { textDecorationLine: 'line-through' }}>{s.title}</AppText>
+                {s.shelved && !s.done && <AppText variant="tiny" tone="muted">Shelved</AppText>}
               </Pressable>
             </View>
           ))}
@@ -263,7 +266,7 @@ export default function TaskListView({ projectId }) {
   const q = query.trim().toLowerCase();
   const tasks = useMemo(() => all.filter((t) => {
     if (q && !t.title.toLowerCase().includes(q) && !(t.subtasks || []).some((s) => s.title.toLowerCase().includes(q))) return false;
-    if (filter === 'open') return t.status !== 'done' || sticky[t._id];
+    if (filter === 'open') return (t.status !== 'done' && t.status !== 'shelved') || sticky[t._id];
     if (filter !== 'all') return t.status === filter;
     return true;
   }), [all, filter, q, sticky]);
@@ -483,6 +486,7 @@ export default function TaskListView({ projectId }) {
         subtitle={subTask?.title}
         options={subMenu && subTask ? [
           !subMenu.subtask.done && { label: 'Add to plan', icon: CalendarPlus, onPress: () => setPlanning(refForSubtask(subTask, subMenu.subtask, projectId)) },
+          subMenu.subtask.shelved && !subMenu.subtask.done && { label: 'Unshelve', icon: ArchiveRestore, onPress: () => run(updateSubtask({ projectId, taskId: subTask._id, subtaskId: subMenu.subtask._id, updates: { shelved: false } })) },
           { label: 'Rename', icon: Pencil, onPress: () => setRenamingSub(subMenu) },
           subMenu.index > 0 && {
             label: 'Move up',

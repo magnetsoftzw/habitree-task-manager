@@ -31,6 +31,12 @@ const resolveSessionTask = async (userId, { taskType, taskId, projectId }) => {
 exports.saveSession = async (req, res) => {
     try {
         const { startTime, endTime, durationMinutes } = req.body;
+        const clientId = typeof req.body.clientId === 'string' && req.body.clientId.trim() ? req.body.clientId.trim().slice(0, 100) : null;
+
+        if (clientId) {
+            const existing = await Session.findOne({ userId: req.user.id, mobileSyncId: clientId });
+            if (existing) return res.json({ success: true, session: existing, duplicate: true });
+        }
 
         const ref = await resolveSessionTask(req.user.id, req.body);
         if (ref.error) return res.status(ref.status || 400).json({ success: false, message: ref.error });
@@ -43,6 +49,7 @@ exports.saveSession = async (req, res) => {
             durationMinutes,
             status: 'Completed',
             ...ref,
+            ...(clientId && { mobileSyncId: clientId }),
         });
 
         if (req.io) {
@@ -52,6 +59,10 @@ exports.saveSession = async (req, res) => {
         res.status(201).json({ success: true, session: newSession });
 
     } catch (error) {
+        if (error.code === 11000 && req.body.clientId) {
+            const existing = await Session.findOne({ userId: req.user.id, mobileSyncId: String(req.body.clientId).trim().slice(0, 100) });
+            if (existing) return res.json({ success: true, session: existing, duplicate: true });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 };

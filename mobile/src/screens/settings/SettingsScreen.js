@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { ChevronDown, ChevronRight, LogOut } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, Clock3, LogOut } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius } from '../../theme/Tokens';
 import AppText from '../../components/ui/AppText';
@@ -14,6 +14,7 @@ import { changePassword, deleteAccount, fetchMe, logout, updateProfile, updateSe
 import { setThemeMode } from '../../store/slices/PrefsSlice';
 import { clearFocus } from '../../store/slices/FocusSlice';
 import { disconnectSocket } from '../../api/Socket';
+import TemplateSheet from '../../components/schedule/TemplateSheet';
 import { ensurePermission, syncPlanReminders } from '../../utils/Notifications';
 import { initials, monthYear } from '../../utils/Format';
 
@@ -153,11 +154,17 @@ export default function SettingsScreen({ navigation }) {
           </PrefRow>
         </Card>
 
+        <Card padded={false} accessibilityLabel="Daily schedule" style={{ overflow: 'hidden' }}>
+          <Row label="Default day schedule" icon={Clock3} onPress={() => setSheet('schedule')} last><ChevronRight size={18} color={colors.textMuted} /></Row>
+        </Card>
+
         <Card padded={false} accessibilityLabel="Session" style={{ overflow: 'hidden' }}>
           <Row label="Log out" icon={LogOut} onPress={signOut} bold />
           <Row label="Delete account…" danger onPress={() => setSheet('delete')} last />
         </Card>
       </ScrollBody>
+
+      <TemplateSheet visible={sheet === 'schedule'} onClose={() => setSheet(null)} />
 
       <OptionSheet
         visible={sheet === 'goal'}

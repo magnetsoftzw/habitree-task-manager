@@ -5,6 +5,9 @@ import Modal from '../../ui/Modal';
 import SegmentedControl from '../../ui/SegmentedControl';
 import { assignTaskToDate } from '../../../store/slices/plannerSlice';
 import { formatLongDate, fromDateKey, nextHourTime, shiftDateKey, toDateKey } from '../../../utils/Format';
+import useDaySchedule from '../../../hooks/UseDaySchedule';
+import TimeHint from '../../schedule/TimeHint';
+import { conflictFor } from '../../../utils/Schedule';
 import './ProjectModals.css';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
@@ -21,10 +24,12 @@ const AddToPlanDialog = ({ onClose, task, projectId, taskType = 'projectTask', s
     const [saving, setSaving] = useState(false);
 
     const target = when === 'today' ? today : when === 'tomorrow' ? shiftDateKey(today, 1) : date;
+    const segments = useDaySchedule(target);
+    const clash = time ? conflictFor(segments, time, duration) : null;
 
     const submit = async (e) => {
         e.preventDefault();
-        if (!target) return;
+        if (!target || clash) return;
         setSaving(true);
         try {
             await dispatch(assignTaskToDate({
@@ -96,6 +101,7 @@ const AddToPlanDialog = ({ onClose, task, projectId, taskType = 'projectTask', s
                         </select>
                     </label>
                 </div>
+                <TimeHint segments={segments} time={time} duration={duration} />
             </form>
         </Modal>
     );

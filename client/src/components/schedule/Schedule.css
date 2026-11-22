@@ -1,0 +1,473 @@
+.sc {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sc-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.sc-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface-subtle);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sc-reset:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.sc-body {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.sc-chart {
+    flex: 1 1 240px;
+    max-width: 340px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.sc-clock {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+    touch-action: none;
+    user-select: none;
+    overflow: visible;
+}
+
+.sc-face {
+    fill: var(--surface);
+    stroke: var(--border);
+}
+
+.sc-seg {
+    stroke: var(--surface);
+    stroke-width: 2;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+    outline: none;
+}
+
+.sc-seg.is-personal {
+    fill: var(--surface);
+    stroke: var(--border-strong);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+}
+
+.sc-seg.is-work {
+    cursor: grab;
+}
+
+.sc-seg.is-work:hover {
+    opacity: 0.88;
+}
+
+.sc-seg.is-personal:hover {
+    fill: var(--surface-subtle);
+}
+
+.sc-seg.is-selected {
+    stroke: var(--text);
+    stroke-width: 2.5;
+    stroke-dasharray: none;
+}
+
+.sc-seg:focus-visible {
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-dasharray: none;
+}
+
+.sc-seg.is-dragging {
+    opacity: 0.35;
+    cursor: grabbing;
+}
+
+.sc-mark {
+    fill: rgba(255, 255, 255, 0.55);
+    pointer-events: none;
+}
+
+.sc-ghost {
+    fill: transparent;
+    stroke-width: 3;
+    stroke-dasharray: 6 4;
+    pointer-events: none;
+}
+
+.sc-now line {
+    stroke: var(--danger-strong);
+    stroke-width: 2;
+}
+
+.sc-now circle {
+    fill: var(--danger-strong);
+}
+
+.sc-now,
+.sc-hub,
+.sc-tick,
+.sc-hour,
+.sc-drag-label {
+    pointer-events: none;
+}
+
+.sc-hub {
+    fill: var(--text);
+}
+
+.sc-tick {
+    stroke: var(--border-strong);
+    stroke-width: 1.5;
+}
+
+.sc-hour {
+    fill: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-body);
+}
+
+.sc-hour.is-noon {
+    fill: var(--text);
+    font-size: 11px;
+}
+
+.sc-drag-label {
+    fill: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sc-hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.sc-detail {
+    flex: 1 1 250px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-subtle);
+    min-width: 0;
+}
+
+.sc-detail-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sc-detail-text {
+    min-width: 0;
+}
+
+.sc-detail-text h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.sc-detail-time {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.sc-swatch {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+}
+
+.sc-swatch.sm {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.sc-swatch.is-blank {
+    background: var(--surface);
+    border: 1px dashed var(--border-strong);
+}
+
+.sc-detail-note,
+.sc-detail-foot {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.sc-detail-foot {
+    font-size: 12px;
+}
+
+.sc-tasks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sc-tasks li {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.sc-task-time,
+.sc-task-dur {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.sc-task-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sc-shift {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.sc-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+}
+
+.sc-legend-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.sc-legend-item.is-on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.sc-legend-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.sc-legend-time {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.sc-outside {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--danger-bg);
+    color: var(--danger-text);
+    font-size: 13px;
+}
+
+.sc-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 0;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.sc-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sc-warn {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--danger-border);
+    border-radius: var(--radius-md);
+    background: var(--danger-bg);
+    color: var(--danger-text);
+}
+
+.sc-warn svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.sc-warn p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.sc-removed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.sc-removed li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+}
+
+.sc-removed-title {
+    font-weight: 600;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.sc-removed-meta {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.sc.is-compact .sc-detail {
+    flex-basis: 100%;
+}
+
+.sc-removed-parent {
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.sc-handle {
+    cursor: grab;
+    outline: none;
+}
+
+.sc-handle.is-moving {
+    cursor: grabbing;
+}
+
+.sc-handle-hit {
+    fill: transparent;
+}
+
+.sc-handle-dot {
+    fill: var(--surface);
+    stroke: var(--text);
+    stroke-width: 3;
+    transition: r 0.12s ease;
+}
+
+.sc-handle:hover .sc-handle-dot,
+.sc-handle.is-moving .sc-handle-dot {
+    r: 10;
+}
+
+.sc-handle:focus-visible .sc-handle-dot {
+    stroke: var(--accent);
+    stroke-width: 4;
+}
+
+.sc-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.sc-ctl {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+}
+
+.sc-ctl .btn {
+    justify-content: center;
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+}
+
+.sc-ctl-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}

@@ -11,6 +11,8 @@ import { updateTaskStatus } from '../../../store/slices/taskSlice';
 import { updateProjectTask, updateSubtask } from '../../../store/slices/projectTasksSlice';
 import { resolveEntry } from '../../../utils/Planner';
 import { addMinutesToTime, formatLongDate, fromDateKey } from '../../../utils/Format';
+import useDaySchedule from '../../../hooks/UseDaySchedule';
+import TimeHint from '../../schedule/TimeHint';
 import '../Project/ProjectModals.css';
 import './PlanEntryModal.css';
 
@@ -21,6 +23,7 @@ const PlanEntryModal = (props) => (props.isOpen && props.item ? <PlanEntryDialog
 
 const PlanEntryDialog = ({ onClose, item, activeDate }) => {
     const dispatch = useDispatch();
+    const segments = useDaySchedule(activeDate);
     const navigate = useNavigate();
     const entry = resolveEntry(item);
     const task = item.taskId;
@@ -129,6 +132,8 @@ const PlanEntryDialog = ({ onClose, item, activeDate }) => {
                         </select>
                     </label>
                 </div>
+
+                {time && <TimeHint segments={segments} time={time} duration={duration} />}
 
                 {item.comments && <p className="pe-notes">{item.comments}</p>}
 

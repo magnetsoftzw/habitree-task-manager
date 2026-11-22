@@ -1,40 +1,79 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/Client';
-import { errorMessage } from '../../utils/Format';
+import { fetcher, writer } from '../../sync/Thunks';
+import { objectId } from '../../sync/ObjectId';
+import { canReachServer } from '../../sync/SyncEngine';
 
-const wrap = (fn, fallback) => async (arg, api) => {
-  try {
-    return await fn(arg, api);
-  } catch (error) {
-    return api.rejectWithValue(errorMessage(error, fallback));
-  }
-};
-
-export const fetchPlanner = createAsyncThunk('planner/fetch', wrap(async (date) => ({
+export const fetchPlanner = fetcher('planner/fetch', async (date) => ({
   date,
   planner: (await API.get(`/planner/${date}`)).data,
-})));
+}));
 
-export const addToPlanner = createAsyncThunk('planner/add', wrap(async ({ date, ...entry }) => ({
-  date,
-  planner: (await API.post(`/planner/${date}/add`, entry)).data,
-}), 'Could not add that to your plan'));
+const snapshotTask = (state, { taskType, taskId, projectId, subtaskId, title, parentTitle }) => {
+  if (taskType === 'projectTask') {
+    const t = state.projectTasks.byProject[projectId]?.tasks.find((x) => x._id === taskId);
+    if (t) return { ...t, projectId: state.projects.items.find((p) => p._id === projectId) || { _id: projectId } };
+  } else {
+    for (const list of Object.values(state.tasks.inventory)) {
+      const t = list.find((x) => x._id === taskId);
+      if (t) return t;
+    }
+    if (state.tasks.current?._id === taskId) return state.tasks.current;
+  }
+  return {
+    _id: taskId,
+    title: subtaskId ? parentTitle || title : title,
+    status: 'Not Started',
+    subtasks: subtaskId ? [{ _id: subtaskId, title, isCompleted: false }] : [],
+  };
+};
 
-export const removeFromPlanner = createAsyncThunk('planner/remove', wrap(async ({ date, entryId }) => ({
-  date,
-  planner: (await API.delete(`/planner/${date}/${entryId}`)).data.planner,
-}), 'Could not remove that block'));
+const addThunk = writer('planner/add', {
+  request: ({ date, _id, taskType, taskId, projectId, subtaskId, time, duration, comments }) => ({
+    method: 'post',
+    url: `/planner/${date}/add`,
+    body: { _id, taskType, taskId, projectId, subtaskId, time, duration, comments },
+    kinds: [`planner:${date}`],
+  }),
+  local: ({ date }) => ({ date, planner: null }),
+  fromServer: (data, { date }) => ({ date, planner: data }),
+  label: 'Adding a block to your plan',
+  fallback: 'Could not add that to your plan',
+});
 
-export const updatePlannerEntry = createAsyncThunk('planner/update', wrap(async ({ date, entryId, ...updates }) => ({
-  date,
-  planner: (await API.patch(`/planner/${date}/${entryId}`, updates)).data.planner,
-}), 'Could not update that block'));
+export const addToPlanner = Object.assign((arg) => (dispatch, getState) => {
+  const full = { ...arg, _id: arg._id || objectId() };
+  dispatch(plannerSlice.actions.addLocal({ ...full, task: snapshotTask(getState(), full) }));
+  return dispatch(addThunk(full));
+}, addThunk);
 
-export const rolloverPlanner = createAsyncThunk('planner/rollover', wrap(async (date) =>
-  (await API.post('/planner/rollover', { date })).data));
+export const removeFromPlanner = writer('planner/remove', {
+  request: ({ date, entryId }) => ({ method: 'delete', url: `/planner/${date}/${entryId}`, kinds: [`planner:${date}`] }),
+  local: ({ date }) => ({ date, planner: null }),
+  fromServer: (data, { date }) => ({ date, planner: data.planner }),
+  label: 'Removing a block from your plan',
+  fallback: 'Could not remove that block',
+});
 
-export const fetchPlannerRange = createAsyncThunk('planner/range', wrap(async ({ from, to }) =>
-  (await API.get('/planner/range', { params: { from, to } })).data.days));
+export const updatePlannerEntry = writer('planner/update', {
+  request: ({ date, entryId, ...updates }) => ({ method: 'patch', url: `/planner/${date}/${entryId}`, body: updates, kinds: [`planner:${date}`] }),
+  local: ({ date }) => ({ date, planner: null }),
+  fromServer: (data, { date }) => ({ date, planner: data.planner }),
+  label: 'A change to your plan',
+  fallback: 'Could not update that block',
+});
+
+export const rolloverPlanner = createAsyncThunk('planner/rollover', async (date, { getState, rejectWithValue }) => {
+  if (!canReachServer(getState)) return null;
+  try {
+    return (await API.post('/planner/rollover', { date })).data;
+  } catch {
+    return rejectWithValue(null);
+  }
+});
+
+export const fetchPlannerRange = fetcher('planner/range', async ({ from, to }) =>
+  (await API.get('/planner/range', { params: { from, to } })).data.days);
 
 const sortEntries = (entries = []) => [...entries].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
@@ -42,6 +81,17 @@ const plannerSlice = createSlice({
   name: 'planner',
   initialState: { byDate: {}, range: {}, loading: false },
   reducers: {
+    setPlannerDay: (state, action) => {
+      const { date, planner } = action.payload;
+      state.byDate[date] = sortEntries(planner?.tasks);
+    },
+    addLocal: (state, action) => {
+      const { date, _id, taskType = 'task', taskId, projectId, subtaskId = null, time, duration, comments = '', task } = action.payload;
+      const day = state.byDate[date] || [];
+      const exists = day.some((e) => (e.taskType || 'task') === taskType && e.taskId?._id === taskId && (e.subtaskId || null) === (subtaskId || null));
+      if (exists) return;
+      state.byDate[date] = sortEntries([...day, { _id, taskType, taskId: task, projectId: projectId || null, subtaskId, time, duration, comments, pending: true }]);
+    },
     markEntrySubtask: (state, action) => {
       const { taskId, subtaskId, done } = action.payload;
       Object.values(state.byDate).forEach((entries) => entries.forEach((e) => {
@@ -61,14 +111,28 @@ const plannerSlice = createSlice({
     const store = (state, action) => {
       state.loading = false;
       const { date, planner } = action.payload;
-      state.byDate[date] = sortEntries(planner?.tasks);
+      if (planner) state.byDate[date] = sortEntries(planner.tasks);
     };
     builder
       .addCase(fetchPlanner.pending, (state) => { state.loading = true; })
       .addCase(fetchPlanner.rejected, (state) => { state.loading = false; })
       .addCase(fetchPlanner.fulfilled, store)
-      .addCase(addToPlanner.fulfilled, store)
+      .addCase(addThunk.fulfilled, store)
+      .addCase(addThunk.rejected, (state, action) => {
+        const { date, _id } = action.meta.arg;
+        if (state.byDate[date]) state.byDate[date] = state.byDate[date].filter((e) => e._id !== _id);
+      })
+      .addCase(removeFromPlanner.pending, (state, action) => {
+        const { date, entryId } = action.meta.arg;
+        if (state.byDate[date]) state.byDate[date] = state.byDate[date].filter((e) => e._id !== entryId);
+      })
       .addCase(removeFromPlanner.fulfilled, store)
+      .addCase(updatePlannerEntry.pending, (state, action) => {
+        const { date, entryId, ...updates } = action.meta.arg;
+        const day = state.byDate[date];
+        if (!day) return;
+        state.byDate[date] = sortEntries(day.map((e) => (e._id === entryId ? { ...e, ...updates } : e)));
+      })
       .addCase(updatePlannerEntry.fulfilled, store)
       .addCase(fetchPlannerRange.fulfilled, (state, action) => {
         const { from, to } = action.meta.arg;
@@ -78,5 +142,5 @@ const plannerSlice = createSlice({
   },
 });
 
-export const { markEntrySubtask, markEntryTask } = plannerSlice.actions;
+export const { markEntrySubtask, markEntryTask, setPlannerDay } = plannerSlice.actions;
 export default plannerSlice.reducer;

@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const { syncLayer } = require('./middleware/syncMiddleware');
 
 const noopIo = { to: () => ({ emit: () => {} }) };
 
@@ -13,6 +14,7 @@ const createApp = (io) => {
     app.use(cors());
     app.use(express.json());
     app.use(express.urlencoded({ extended: false }));
+    app.use(syncLayer());
 
     if (process.env.NODE_ENV === 'development') {
         app.use(morgan('dev'));
@@ -28,8 +30,10 @@ const createApp = (io) => {
     app.use('/api/groups',        require('./routes/groupRoutes'));
     app.use('/api/sessions',      require('./routes/sessionRoutes'));
     app.use('/api/planner',       require('./routes/plannerRoutes'));
+    app.use('/api/schedule',      require('./routes/scheduleRoutes'));
     app.use('/api/stats',         require('./routes/statsRoutes'));
     app.use('/api/notifications', require('./routes/notificationRoutes'));
+    app.use('/api/sync',          require('./routes/syncRoutes'));
     app.use('/api/youtube',       require('./routes/youtubeRoutes'));
 
     app.use((err, req, res, next) => {

@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/axiosInstance';
+import { syncSessions } from './sessionSlice';
 
 // Accepts an optional date string (YYYY-MM-DD). Defaults to today on the backend.
 export const fetchTodayStats = createAsyncThunk(
@@ -10,6 +11,13 @@ export const fetchTodayStats = createAsyncThunk(
         return response.data;
     }
 );
+
+const applyDay = (state, day) => {
+    state.efficiencyScore = day.efficiencyScore || 0;
+    state.totalProductivityMinutes = day.totalMinutes || day.totalProductivityMinutes || 0;
+    state.sessionsCount = day.sessionsCount || 0;
+    state.activeDate = day.date || null;
+};
 
 const statsSlice = createSlice({
     name: 'stats',
@@ -27,11 +35,10 @@ const statsSlice = createSlice({
             })
             .addCase(fetchTodayStats.fulfilled, (state, action) => {
                 state.loading = false;
-                state.efficiencyScore = action.payload.efficiencyScore || 0;
-                state.totalProductivityMinutes =
-                    action.payload.totalMinutes || action.payload.totalProductivityMinutes || 0;
-                state.sessionsCount = action.payload.sessionsCount || 0;
-                state.activeDate = action.payload.date || null;
+                applyDay(state, action.payload);
+            })
+            .addCase(syncSessions.fulfilled, (state, action) => {
+                if (action.payload.day) applyDay(state, action.payload.day);
             })
             .addCase(fetchTodayStats.rejected, (state) => {
                 state.loading = false;

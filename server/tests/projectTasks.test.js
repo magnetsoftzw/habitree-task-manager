@@ -26,7 +26,7 @@ const register = async (name) => {
 };
 
 before(async () => {
-    mongo = await MongoMemoryServer.create();
+    mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 120000 } });
     await mongoose.connect(mongo.getUri());
     app = createApp();
     await register('owner');
@@ -35,7 +35,7 @@ before(async () => {
 
 after(async () => {
     await mongoose.disconnect();
-    await mongo.stop();
+    await mongo?.stop();
 });
 
 describe('project task lists', () => {
@@ -145,7 +145,7 @@ describe('project task lists', () => {
     test('list tasks can be planned and focused on, and count in analytics', async () => {
         const today = new Date().toISOString().split('T')[0];
         const planned = await request(app).post(`/api/planner/${today}/add`).set(auth('owner'))
-            .send({ taskType: 'projectTask', taskId: taskA, projectId, time: '10:00', duration: 45 });
+            .send({ taskType: 'projectTask', taskId: taskA, projectId, time: '08:30', duration: 45 });
         assert.equal(planned.status, 201);
         const entry = planned.body.tasks[0];
         assert.equal(entry.taskType, 'projectTask');

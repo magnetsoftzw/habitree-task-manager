@@ -85,6 +85,7 @@ const SubtaskItem = ({ sub, index, onToggle, onRename, onDelete }) => {
                             {sub.title}
                         </button>
                     )}
+                    {sub.shelved && !sub.done && <span className="tl-sub-shelved">Shelved</span>}
                     <button type="button" className="tl-sub-delete" aria-label={`Delete ${sub.title}`} onClick={onDelete}>
                         <X size={14} />
                     </button>

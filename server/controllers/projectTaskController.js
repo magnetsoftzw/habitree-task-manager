@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const mongoose = require('mongoose');
 const ProjectTask = require('../models/projectTask');
 const ProjectTaskGroup = require('../models/projectTaskGroup');
@@ -89,7 +90,7 @@ const handle = (fn) => async (req, res) => {
 exports.listTasks = handle(async (req, res) => {
     if (!(await loadProject(req, res))) return;
     const filter = { projectId: req.params.projectId };
-    if (req.query.status === 'open') filter.status = { $ne: 'done' };
+    if (req.query.status === 'open') filter.status = { $nin: ['done', 'shelved'] };
     const tasks = await ProjectTask.find(filter).sort({ order: 1, createdAt: 1 });
     res.json({ success: true, tasks: tasks.map(sortSubtasks) });
 });
@@ -102,6 +103,7 @@ exports.createTask = handle(async (req, res) => {
 
     const last = await ProjectTask.findOne({ projectId: req.params.projectId }).sort({ order: -1 }).select('order');
     const task = await ProjectTask.create({
+        ...withClientId(req.body),
         projectId: req.params.projectId,
         title: req.body.title.trim(),
         notes: req.body.notes || '',
@@ -180,7 +182,7 @@ exports.createSubtask = handle(async (req, res) => {
     if (!task) return;
 
     const maxOrder = task.subtasks.reduce((max, s) => Math.max(max, s.order), -1);
-    task.subtasks.push({ title: req.body.title.trim(), order: maxOrder + 1 });
+    task.subtasks.push({ ...withClientId(req.body), title: req.body.title.trim(), order: maxOrder + 1 });
     await task.save();
 
     emit(req, 'projectTask:updated', { task: sortSubtasks(task) });
@@ -216,6 +218,9 @@ exports.updateSubtask = handle(async (req, res) => {
     if (req.body.done !== undefined && typeof req.body.done !== 'boolean') {
         return fail(res, 400, 'done must be true or false', 'done');
     }
+    if (req.body.shelved !== undefined && typeof req.body.shelved !== 'boolean') {
+        return fail(res, 400, 'shelved must be true or false', 'shelved');
+    }
     const task = await loadTask(req, res);
     if (!task) return;
 
@@ -224,6 +229,8 @@ exports.updateSubtask = handle(async (req, res) => {
 
     if (req.body.title !== undefined) subtask.title = req.body.title.trim();
     if (req.body.done !== undefined) subtask.done = req.body.done;
+    if (req.body.shelved !== undefined) subtask.shelved = req.body.shelved;
+    if (subtask.done) subtask.shelved = false;
     await task.save();
 
     emit(req, 'projectTask:updated', { task: sortSubtasks(task) });

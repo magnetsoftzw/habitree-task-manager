@@ -1,9 +1,11 @@
+const { withClientId } = require('../utils/clientId');
 const Task = require('../models/task');
 const Group = require('../models/group');
 
 exports.createGroup = async (req, res) => {
     try {
          const group = await Group.create({
+            ...withClientId(req.body),
             userId: req.user.id,
             name: req.body.name,
             color: req.body.color

@@ -16,7 +16,6 @@ const clock = (s) => {
 };
 
 const SessionDialog = ({ initialSeconds, onClose, onFinish, taskTitle }) => {
-    const saving = useSelector((state) => state.session.saving);
     const reminders = useSelector((state) => state.user.profile?.settings?.sessionReminders !== false);
     const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
     const [running, setRunning] = useState(true);
@@ -78,12 +77,11 @@ const SessionDialog = ({ initialSeconds, onClose, onFinish, taskTitle }) => {
     };
 
     const requestClose = () => {
-        if (saving) return;
         if (elapsed >= 60 && !confirmDiscard) setConfirmDiscard(true);
         else onClose();
     };
 
-    const status = saving ? 'Saving…' : finished ? 'Session complete' : running ? 'Focusing' : 'Paused';
+    const status = finished ? 'Session complete' : running ? 'Focusing' : 'Paused';
 
     return (
         <Modal
@@ -100,9 +98,9 @@ const SessionDialog = ({ initialSeconds, onClose, onFinish, taskTitle }) => {
                 </>
             ) : (
                 <>
-                    <button type="button" className="btn btn-ghost" onClick={requestClose} disabled={saving}>Discard</button>
-                    <button type="button" className="btn btn-primary" onClick={finish} disabled={saving || elapsed < 60}>
-                        <Square size={13} fill="currentColor" aria-hidden="true" /> {saving ? 'Saving…' : 'Finish & save'}
+                    <button type="button" className="btn btn-ghost" onClick={requestClose}>Discard</button>
+                    <button type="button" className="btn btn-primary" onClick={finish} disabled={elapsed < 60}>
+                        <Square size={13} fill="currentColor" aria-hidden="true" /> Finish & save
                     </button>
                 </>
             )}
@@ -122,11 +120,11 @@ const SessionDialog = ({ initialSeconds, onClose, onFinish, taskTitle }) => {
                     </div>
                 </div>
                 <div className="sm-controls">
-                    <button type="button" className="btn" onClick={toggle} disabled={finished || saving}>
+                    <button type="button" className="btn" onClick={toggle} disabled={finished}>
                         {running ? <Pause size={15} fill="currentColor" aria-hidden="true" /> : <Play size={15} fill="currentColor" aria-hidden="true" />}
                         {running ? 'Pause' : 'Resume'}
                     </button>
-                    <button type="button" className="btn" onClick={reset} disabled={saving}>
+                    <button type="button" className="btn" onClick={reset}>
                         <RotateCcw size={15} aria-hidden="true" /> Restart
                     </button>
                 </div>

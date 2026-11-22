@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
-import { CalendarPlus, Play, Plus, Trash2, Youtube } from 'lucide-react-native';
+import { CalendarPlus, Play, Plus, SquarePlay, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius } from '../../theme/Tokens';
 import AppText from '../../components/ui/AppText';
@@ -177,7 +177,7 @@ export default function TaskDetailsScreen({ route, navigation }) {
           {subtasks.length === 0 && <AppText variant="body" tone="muted">Break the task into steps to track progress.</AppText>}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <Button label="Add subtask" icon={Plus} variant="secondary" style={{ flex: 1 }} onPress={() => setAdding(true)} />
-            <Button label="From YouTube" icon={Youtube} variant="secondary" style={{ flex: 1 }} onPress={() => setImporting(true)} />
+            <Button label="From YouTube" icon={SquarePlay} variant="secondary" style={{ flex: 1 }} onPress={() => setImporting(true)} />
           </View>
         </Card>
         {task.createdAt && (

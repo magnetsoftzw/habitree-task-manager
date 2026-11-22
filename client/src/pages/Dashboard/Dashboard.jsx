@@ -19,11 +19,16 @@ import FocusSessionFlow from '../../components/session/FocusSessionFlow';
 import PlanEntryModal from '../../components/modals/Planner/PlanEntryModal';
 import AddMinutesModal from '../../components/modals/Session/AddMinutesModal';
 import CreateTaskModal from '../../components/modals/Task/CreateTaskModal';
+import DaySchedule from '../../components/schedule/DaySchedule';
+import useDaySchedule from '../../hooks/UseDaySchedule';
+import { nextFreeSlot } from '../../utils/Schedule';
 
 import API from '../../api/axiosInstance';
 import { fetchTodayStats } from '../../store/slices/statsSlice';
 import { fetchWeeklyStats } from '../../store/slices/analyticsSlice';
-import { saveWorkSession } from '../../store/slices/sessionSlice';
+import {
+    discardFailed, logSession, retryFailed, selectMyQueue, selectPendingByDay, syncSessions,
+} from '../../store/slices/sessionSlice';
 import { setActiveDate, fetchPlannerByDate, assignTaskToDate } from '../../store/slices/plannerSlice';
 import { createNewTask, fetchInventoryTasks } from '../../store/slices/taskSlice';
 import { fetchGroups } from '../../store/slices/groupSlice';
@@ -49,18 +54,21 @@ const Dashboard = () => {
 
     const { profile } = useSelector((state) => state.user);
     const { activeDate, dayData, loading: plannerLoading } = useSelector((state) => state.planner);
-    const { totalProductivityMinutes, sessionsCount } = useSelector((state) => state.stats);
-    const weekly = useSelector((state) => state.analytics.weekly);
+    const stats = useSelector((state) => state.stats);
+    const weeklySynced = useSelector((state) => state.analytics.weekly);
     const inventory = useSelector((state) => state.tasks.inventory);
     const groups = useSelector((state) => state.groups.list);
     const roadmaps = useSelector((state) => state.roadmaps.list);
-    const { saving } = useSelector((state) => state.session);
+    const pendingByDay = useSelector(selectPendingByDay);
+    const myQueue = useSelector(selectMyQueue);
+    const syncing = useSelector((state) => state.session.syncing);
 
     const [search, setSearch] = useState('');
     const [notifications, setNotifications] = useState([]);
     const [notifOpen, setNotifOpen] = useState(false);
     const [selectedEntry, setSelectedEntry] = useState(null);
     const [isAddBlockOpen, setAddBlockOpen] = useState(false);
+    const [addBlockFrom, setAddBlockFrom] = useState(null);
     const [isFocusOpen, setFocusOpen] = useState(false);
     const [isChooseTaskOpen, setChooseTaskOpen] = useState(false);
     const [focusTask, setFocusTask] = useState(null);
@@ -68,6 +76,7 @@ const Dashboard = () => {
     const [isCreateOpen, setCreateOpen] = useState(false);
 
     const today = toDateKey();
+    const segments = useDaySchedule(activeDate);
     const isToday = activeDate === today;
 
     useEffect(() => {
@@ -151,6 +160,18 @@ const Dashboard = () => {
 
     const unread = notifications.filter((n) => !n.isRead).length;
     const dailyGoal = dailyGoalOf(profile);
+    const weekly = useMemo(() => {
+        const merged = Object.fromEntries(weeklySynced.map((d) => [d._id, { ...d }]));
+        Object.entries(pendingByDay).forEach(([day, p]) => {
+            merged[day] = { _id: day, ...merged[day], totalMinutes: (merged[day]?.totalMinutes || 0) + p.minutes };
+        });
+        return Object.values(merged);
+    }, [weeklySynced, pendingByDay]);
+    const pendingToday = pendingByDay[activeDate] || { minutes: 0, count: 0 };
+    const totalProductivityMinutes = (stats.totalProductivityMinutes || 0) + pendingToday.minutes;
+    const sessionsCount = (stats.sessionsCount || 0) + pendingToday.count;
+    const waiting = myQueue.filter((q) => !q.failed).length;
+    const rejected = myQueue.filter((q) => q.failed);
     const goalPct = Math.round(((totalProductivityMinutes || 0) / dailyGoal) * 100);
     const taskPct = allTasks.length ? (doneCount / allTasks.length) * 100 : 0;
 
@@ -182,19 +203,19 @@ const Dashboard = () => {
         }
     };
 
-    const handleAddMinutes = async ({ minutes, startTime, endTime }) => {
-        try {
-            await dispatch(saveWorkSession({ startTime, endTime, durationMinutes: minutes })).unwrap();
-            toast.success(`Logged ${minutes} min`);
-            refreshDay();
-            setAddMinutesOpen(false);
-        } catch {
-            toast.error("Couldn't log that time. Try again.");
-        }
+    const handleAddMinutes = ({ minutes, startTime, endTime }) => {
+        dispatch(logSession({ startTime, endTime, durationMinutes: minutes }));
+        toast.success(`Logged ${minutes} min`);
+        setAddMinutesOpen(false);
     };
 
     const handleSuggest = (task) => {
-        dispatch(assignTaskToDate({ date: activeDate, taskId: task._id, subtaskId: null, time: nextHourTime(), comments: '' }));
+        const now = new Date();
+        const from = activeDate === today ? now.getHours() * 60 + now.getMinutes() : 0;
+        const time = nextFreeSlot(segments, dayData?.tasks || [], 30, from) || nextHourTime();
+        dispatch(assignTaskToDate({ date: activeDate, taskId: task._id, subtaskId: null, time, comments: '' }))
+            .unwrap()
+            .catch((err) => toast.error(err?.message || "Couldn't add that to the plan."));
     };
 
     const handleNotificationClick = async (n) => {
@@ -294,6 +315,19 @@ const Dashboard = () => {
                         <span className="stat-caption">
                             {sessionsCount ? `Completed ${isToday ? 'today' : 'that day'}` : `None yet ${isToday ? 'today' : 'that day'}`}
                         </span>
+                        {waiting > 0 && (
+                            <span className="dash-sync" role="status">
+                                <span className="dash-sync-dot" aria-hidden="true" />
+                                {syncing ? 'Syncing…' : `${waiting} waiting to sync`}
+                            </span>
+                        )}
+                        {rejected.length > 0 && (
+                            <span className="dash-sync is-error" role="alert" title={rejected[0].failed}>
+                                {rejected.length} couldn&apos;t sync
+                                <button type="button" className="dash-sync-btn" onClick={() => { dispatch(retryFailed()); dispatch(syncSessions()); }}>Retry</button>
+                                <button type="button" className="dash-sync-btn" onClick={() => dispatch(discardFailed())}>Discard</button>
+                            </span>
+                        )}
                     </div>
                     <div className="stat-tile">
                         <div className="stat-tile-head">
@@ -401,6 +435,23 @@ const Dashboard = () => {
                             )}
                         </section>
 
+                        <section className="card" aria-labelledby="sched-h">
+                            <div className="card-head tight">
+                                <h2 id="sched-h" className="card-title">{isToday ? "Today's schedule" : `Schedule for ${dayLabel}`}</h2>
+                                <Link to="/settings#schedule" className="card-link">Edit template</Link>
+                            </div>
+                            <DaySchedule
+                                key={activeDate}
+                                date={activeDate}
+                                entries={dayData?.tasks || []}
+                                onChanged={() => dispatch(fetchPlannerByDate(activeDate))}
+                                onAddInPeriod={(period) => {
+                                    setAddBlockFrom(period.start);
+                                    setAddBlockOpen(true);
+                                }}
+                            />
+                        </section>
+
                         <section className="card" aria-labelledby="groups-h">
                             <div className="card-head tight">
                                 <h2 id="groups-h" className="card-title">Task groups</h2>
@@ -506,7 +557,7 @@ const Dashboard = () => {
                 </div>
             </div>
 
-            <AddBlockModal isOpen={isAddBlockOpen} onClose={() => setAddBlockOpen(false)} date={activeDate} tasks={allTasks} />
+            <AddBlockModal isOpen={isAddBlockOpen} onClose={() => { setAddBlockOpen(false); setAddBlockFrom(null); }} date={activeDate} tasks={allTasks} fromMinute={addBlockFrom ?? undefined} />
             <AddBlockModal
                 isOpen={isChooseTaskOpen}
                 onClose={() => setChooseTaskOpen(false)}
@@ -535,7 +586,6 @@ const Dashboard = () => {
                 isOpen={isAddMinutesOpen}
                 onClose={() => setAddMinutesOpen(false)}
                 onAdd={handleAddMinutes}
-                loading={saving}
                 activeDate={activeDate}
             />
         </div>

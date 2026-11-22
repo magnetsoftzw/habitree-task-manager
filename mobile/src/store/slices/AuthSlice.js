@@ -2,6 +2,8 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API, { TOKEN_KEY } from '../../api/Client';
 import { errorMessage } from '../../utils/Format';
+import { canReachServer, send } from '../../sync/SyncEngine';
+import { requireConnection } from '../../sync/Thunks';
 
 const authenticate = (path, fallback) => async (body, { rejectWithValue }) => {
   try {
@@ -28,42 +30,45 @@ export const fetchMe = createAsyncThunk('auth/me', async (_, { rejectWithValue }
   } catch (error) {
     return rejectWithValue(errorMessage(error));
   }
-});
+}, { condition: (_, { getState }) => canReachServer(getState) });
 
-export const updateProfile = createAsyncThunk('auth/updateProfile', async (updates, { rejectWithValue }) => {
+export const updateProfile = createAsyncThunk('auth/updateProfile', async (updates, api) => {
   try {
+    requireConnection(api.getState);
     const { data } = await API.put('/users/me', updates);
     return data;
   } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not update your profile'));
+    return api.rejectWithValue(error.offline ? error.message : errorMessage(error, 'Could not update your profile'));
   }
 });
 
-export const updateSettings = createAsyncThunk('auth/updateSettings', async (updates, { rejectWithValue }) => {
+export const updateSettings = createAsyncThunk('auth/updateSettings', async (updates, api) => {
   try {
-    const { data } = await API.patch('/users/settings', updates);
-    return data.settings;
+    const sent = await send(api, { method: 'patch', url: '/users/settings', body: updates, kinds: ['user'], label: 'A settings change' });
+    return sent.queued ? { ...api.getState().auth.user?.settings, ...updates } : sent.data.settings;
   } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not save that setting'));
+    return api.rejectWithValue(errorMessage(error, 'Could not save that setting'));
   }
 });
 
-export const changePassword = createAsyncThunk('auth/changePassword', async (body, { rejectWithValue }) => {
+export const changePassword = createAsyncThunk('auth/changePassword', async (body, { getState, rejectWithValue }) => {
   try {
+    requireConnection(getState);
     await API.put('/users/password', body);
     return true;
   } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not change your password'));
+    return rejectWithValue(error.offline ? error.message : errorMessage(error, 'Could not change your password'));
   }
 });
 
-export const deleteAccount = createAsyncThunk('auth/deleteAccount', async (password, { dispatch, rejectWithValue }) => {
+export const deleteAccount = createAsyncThunk('auth/deleteAccount', async (password, { dispatch, getState, rejectWithValue }) => {
   try {
+    requireConnection(getState);
     await API.delete('/users/me', { data: { password } });
     await dispatch(logout());
     return true;
   } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not delete your account'));
+    return rejectWithValue(error.offline ? error.message : errorMessage(error, 'Could not delete your account'));
   }
 });
 

@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/axiosInstance';
+import { syncSessions } from './sessionSlice';
 
 // Accepts optional date string for the summary cards
 export const fetchTodayStats = createAsyncThunk(
@@ -92,6 +93,9 @@ const analyticsSlice = createSlice({
             .addCase(fetchWeeklyStats.fulfilled, (state, action) => {
                 state.loading = false;
                 state.weekly = action.payload || [];
+            })
+            .addCase(syncSessions.fulfilled, (state, action) => {
+                if (action.payload.weekly) state.weekly = action.payload.weekly;
             })
             .addCase(fetchWeeklyStats.rejected, setError)
 

@@ -8,11 +8,11 @@ export const TASK_STATUS_LABELS = {
   Completed: 'Done',
 };
 
-export const LIST_STATUSES = ['not_started', 'in_progress', 'done'];
+export const LIST_STATUSES = ['not_started', 'in_progress', 'done', 'shelved'];
 
-export const LIST_TO_TASK_STATUS = { not_started: 'Not Started', in_progress: 'On-Going', done: 'Completed' };
+export const LIST_TO_TASK_STATUS = { not_started: 'Not Started', in_progress: 'On-Going', done: 'Completed', shelved: 'Shelved' };
 
-export const LIST_STATUS_LABELS = { not_started: 'Not started', in_progress: 'In progress', done: 'Done' };
+export const LIST_STATUS_LABELS = { not_started: 'Not started', in_progress: 'In progress', done: 'Done', shelved: 'Shelved' };
 
 export const CATEGORIES = ['General', 'Watch', 'Read', 'Practice', 'Note'];
 

@@ -3,7 +3,7 @@ const ProjectTask = require('../models/projectTask');
 const Project = require('../models/project');
 const { projectColor } = require('./projectAccess');
 
-const LIST_STATUS_TO_TASK = { not_started: 'Not Started', in_progress: 'On-Going', done: 'Completed' };
+const LIST_STATUS_TO_TASK = { not_started: 'Not Started', in_progress: 'On-Going', done: 'Completed', shelved: 'Shelved' };
 
 const shapeProjectTask = (task, project) => {
     const color = projectColor(project);
@@ -15,7 +15,7 @@ const shapeProjectTask = (task, project) => {
         listStatus: task.status,
         category: 'Project',
         dueDate: task.dueDate,
-        subtasks: task.subtasks.map((s) => ({ _id: s._id, title: s.title, isCompleted: s.done })),
+        subtasks: task.subtasks.map((s) => ({ _id: s._id, title: s.title, isCompleted: s.done, status: s.done ? 'Completed' : s.shelved ? 'Shelved' : 'Not Started' })),
         groupId: projectRef && { _id: project._id, name: project.name, color },
         projectId: projectRef,
     };

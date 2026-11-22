@@ -18,6 +18,9 @@ import { addToPlanner, fetchPlanner, removeFromPlanner, rolloverPlanner, updateP
 import { fetchInventory, setTaskStatus } from '../../store/slices/TasksSlice';
 import { fetchNotifications } from '../../store/slices/NotificationsSlice';
 import NotificationsSheet from '../../components/notifications/NotificationsSheet';
+import ScheduleCard from '../../components/schedule/ScheduleCard';
+import { fetchSchedule } from '../../store/slices/ScheduleSlice';
+import { freeSlot } from '../../utils/Schedule';
 import { fetchActivity, fetchRangeStats } from '../../store/slices/StatsSlice';
 import { entryInfo, refForEntry, setRefDone } from '../../store/TaskThunks';
 import { clock, formatDuration, formatGoal, formatMinutes, fullDate, greeting, initials, nextHalfHour, timeToMinutes, todayKey } from '../../utils/Format';
@@ -124,6 +127,8 @@ export default function TodayScreen({ navigation }) {
   const unread = useSelector((s) => s.notifications.items.filter((n) => !n.isRead).length);
   const [notifOpen, setNotifOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  const [planTime, setPlanTime] = useState(null);
+  const segments = useSelector((s) => s.schedule.byDate[date]?.segments);
   const [pickFocus, setPickFocus] = useState(false);
   const [menuEntry, setMenuEntry] = useState(null);
   const [editEntry, setEditEntry] = useState(null);
@@ -136,6 +141,7 @@ export default function TodayScreen({ navigation }) {
     setDate(key);
     await dispatch(rolloverPlanner(key));
     dispatch(fetchPlanner(key));
+    dispatch(fetchSchedule(key));
     dispatch(fetchRangeStats('Today'));
     dispatch(fetchActivity());
     dispatch(fetchInventory());
@@ -172,7 +178,8 @@ export default function TodayScreen({ navigation }) {
   }, [inventory]);
 
   const suggest = async (task) => {
-    const r = await dispatch(addToPlanner({ date, taskType: 'task', taskId: task._id, time: nextHalfHour(), duration: 30 }));
+    const time = (segments && freeSlot(segments, entries || [], 30, { after: nowMins })) || nextHalfHour();
+    const r = await dispatch(addToPlanner({ date, taskType: 'task', taskId: task._id, time, duration: 30 }));
     if (r.error) show(r.payload);
   };
 
@@ -288,6 +295,14 @@ export default function TodayScreen({ navigation }) {
           <DashedButton label="Add to today" icon={Plus} onPress={() => setPlanOpen(true)} />
         </View>
 
+        <ScheduleCard
+          date={date}
+          entries={entries || []}
+          nowMinutes={nowMins}
+          onAddTask={(time) => { setPlanTime(time); setPlanOpen(true); }}
+          onOpenEntry={setMenuEntry}
+        />
+
         <Card style={{ gap: 12 }}>
           <AppText variant="title" accessibilityRole="header" style={{ fontFamily: 'Inter_700Bold' }}>Recent activity</AppText>
           {activity.length === 0 && <AppText variant="body" tone="muted">Tasks you complete will show up here.</AppText>}
@@ -310,7 +325,7 @@ export default function TodayScreen({ navigation }) {
         </Card>
       </ScrollBody>
 
-      <PlanSheet visible={planOpen} onClose={() => setPlanOpen(false)} date={date} />
+      <PlanSheet visible={planOpen} onClose={() => { setPlanOpen(false); setPlanTime(null); }} date={date} presetTime={planTime} />
       <PlanSheet visible={pickFocus} onClose={() => setPickFocus(false)} title="Focus on" onPick={(ref) => dispatch(selectFocusTask(ref))} />
       <OptionSheet
         visible={!!menuEntry}

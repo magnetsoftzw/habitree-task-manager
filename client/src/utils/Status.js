@@ -8,6 +8,7 @@ const STATUS_MAP = {
     not_started: { label: 'Not started', tone: 'not-started' },
     in_progress: { label: 'In progress', tone: 'in-progress' },
     done: { label: 'Done', tone: 'done' },
+    shelved: { label: 'Shelved', tone: 'shelved' },
 };
 
 export const statusInfo = (status) => STATUS_MAP[status] || STATUS_MAP['Not Started'];

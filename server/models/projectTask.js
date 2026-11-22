@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
 
-const STATUSES = ['not_started', 'in_progress', 'done'];
+const STATUSES = ['not_started', 'in_progress', 'done', 'shelved'];
 
 const subtaskSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true, minlength: 1, maxlength: 200 },
     done: { type: Boolean, default: false },
+    shelved: { type: Boolean, default: false },
     order: { type: Number, default: 0 },
 });
 

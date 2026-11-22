@@ -6,6 +6,7 @@ import { fetchCurrentUser } from '../store/slices/userSlice';
 import { fetchProjects } from '../store/slices/projectSlice';
 import { fetchUserRoadmaps } from '../store/slices/roadmapSlice';
 import { fetchInventoryTasks } from '../store/slices/taskSlice';
+import { syncSessions } from '../store/slices/sessionSlice';
 import Sidebar from '../components/layout/Sidebar';
 import './MainLayout.css';
 
@@ -28,6 +29,10 @@ const MainLayout = () => {
         dispatch(fetchUserRoadmaps());
         dispatch(fetchInventoryTasks());
     }, [dispatch]);
+
+    useEffect(() => {
+        if (profile?._id) dispatch(syncSessions());
+    }, [dispatch, profile?._id]);
 
     const counts = useMemo(() => ({
         tasks: Object.values(inventory || {}).reduce((sum, list) => sum + (list?.length || 0), 0),

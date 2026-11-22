@@ -1,5 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import API from '../../api/Client';
+import { errorMessage } from '../../utils/Format';
+import { send } from '../../sync/SyncEngine';
+import { objectId } from '../../sync/ObjectId';
 
 export const FOCUS_MINUTES = 20;
 export const FOCUS_PRESETS = [20, 30, 40, 50, 60];
@@ -31,36 +33,40 @@ const refBody = (ref) => (ref ? {
   projectId: ref.projectId,
 } : {});
 
-export const saveFocusSession = createAsyncThunk('focus/save', async (_, { getState, rejectWithValue }) => {
-  const { focus } = getState();
+const postSession = async (api, body) => {
+  const session = { ...body, clientId: `mobile-${objectId()}` };
+  const sent = await send(api, { method: 'post', url: '/sessions/save', body: session, kinds: ['sessions'], label: `A ${body.durationMinutes}-minute focus session` });
+  return sent.queued ? { ...session, status: 'Completed', pending: true } : sent.data.session;
+};
+
+export const saveFocusSession = createAsyncThunk('focus/save', async (_, api) => {
+  const { focus } = api.getState();
   if (focus.phase !== 'focus' || !focus.sessionStartedAt) return null;
   const minutes = Math.floor(Math.min(elapsedOf(focus), phaseLengthMs('focus', focusMinutesOf(focus))) / 60000);
   if (minutes < 1) return null;
   try {
-    const { data } = await API.post('/sessions/save', {
+    return await postSession(api, {
       startTime: new Date(focus.sessionStartedAt).toISOString(),
       endTime: new Date().toISOString(),
       durationMinutes: minutes,
       ...refBody(focus.task),
     });
-    return data.session;
   } catch (error) {
-    return rejectWithValue(error.response?.data?.message || 'Could not save the session');
+    return api.rejectWithValue(errorMessage(error, 'Could not save the session'));
   }
 });
 
-export const logFocusTime = createAsyncThunk('focus/log', async ({ minutes, endTime, task }, { rejectWithValue }) => {
+export const logFocusTime = createAsyncThunk('focus/log', async ({ minutes, endTime, task }, api) => {
   try {
     const end = new Date(endTime);
-    const { data } = await API.post('/sessions/save', {
+    return await postSession(api, {
       startTime: new Date(end.getTime() - minutes * 60000).toISOString(),
       endTime: end.toISOString(),
       durationMinutes: minutes,
       ...refBody(task),
     });
-    return data.session;
   } catch (error) {
-    return rejectWithValue(error.response?.data?.message || "Couldn't log that time");
+    return api.rejectWithValue(errorMessage(error, "Couldn't log that time"));
   }
 });
 

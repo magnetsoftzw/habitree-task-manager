@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
-    ArrowRight, BarChart3, CalendarDays, Columns3, Download, RefreshCw, Route, Smartphone, Sparkles, Timer,
+    ArrowRight, BarChart3, CalendarDays, Columns3, Download, RefreshCw, Route, Smartphone, Timer,
 } from 'lucide-react';
 import BrandMark from '../../components/ui/BrandMark';
 import LandingPreview from './LandingPreview';
@@ -67,7 +67,6 @@ const Landing = () => {
             <main id="ld-main">
                 <section className="ld-hero">
                     <div className="ld-wrap ld-hero-inner">
-                        <span className="ld-badge"><Sparkles size={14} strokeWidth={2.2} aria-hidden="true" /> Your unified productivity manager</span>
                         <h1>Grow your skills one focused session at a time.</h1>
                         <p>Plan your day, track every focus session, and watch progress build across your projects and skill roadmaps — on the web and on Android.</p>
                         <div className="ld-hero-ctas">

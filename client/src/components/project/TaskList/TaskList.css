@@ -509,3 +509,13 @@
 .tl-group-head:has(.menu-list) {
     z-index: 20;
 }
+
+.tl-sub-shelved {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--pill-shelved-bg);
+    color: var(--pill-shelved-fg);
+    font-size: 11px;
+    font-weight: 600;
+}

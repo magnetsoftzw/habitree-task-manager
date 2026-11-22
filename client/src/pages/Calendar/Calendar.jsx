@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import API from '../../api/axiosInstance';
 import { setActiveDate } from '../../store/slices/plannerSlice';
 import { resolveEntry } from '../../utils/Planner';
+import DaySchedule from '../../components/schedule/DaySchedule';
 import {
     addMinutesToTime, dailyGoalOf, formatDuration, formatGoal, fromDateKey, shiftDateKey, toDateKey, tzOffset,
 } from '../../utils/Format';
@@ -239,6 +240,17 @@ const Calendar = () => {
                             <button type="button" className="btn btn-primary cal-plan-btn" onClick={planDay}>
                                 <Plus size={16} strokeWidth={2.4} aria-hidden="true" /> Plan this day
                             </button>
+                        </section>
+
+                        <section className="card cal-sched" aria-labelledby="cal-sched-h">
+                            <h2 id="cal-sched-h" className="card-title sm">Day schedule</h2>
+                            <DaySchedule
+                                key={selected}
+                                date={selected}
+                                entries={selEntries}
+                                compact
+                                onChanged={() => load(rangeFrom, rangeTo, new AbortController().signal)}
+                            />
                         </section>
 
                         <section className="card cal-stat" aria-labelledby="cal-stat-h">

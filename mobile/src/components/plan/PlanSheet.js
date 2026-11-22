@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { ChevronRight, Search } from 'lucide-react-native';
-import API from '../../api/Client';
+import { fetchProjects } from '../../store/slices/ProjectsSlice';
+import { fetchProjectTasks } from '../../store/slices/ProjectTasksSlice';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius } from '../../theme/Tokens';
 import AppText from '../ui/AppText';
@@ -10,9 +11,11 @@ import Sheet from '../ui/Sheet';
 import { Button, Chip } from '../ui/Controls';
 import { DateField, TextField, TimeField } from '../ui/Fields';
 import { useToast } from '../ui/Toast';
-import { addToPlanner, fetchPlannerRange } from '../../store/slices/PlannerSlice';
+import { addToPlanner, fetchPlanner, fetchPlannerRange } from '../../store/slices/PlannerSlice';
+import { fetchSchedule } from '../../store/slices/ScheduleSlice';
+import { formatRange, freeSlot, placement } from '../../utils/Schedule';
 import { fetchInventory } from '../../store/slices/TasksSlice';
-import { addDays, formatDuration, fromDateKey, longDate, nextHalfHour, toDateKey, todayKey } from '../../utils/Format';
+import { addDays, formatDuration, fromDateKey, longDate, nextHalfHour, timeToMinutes, toDateKey, todayKey } from '../../utils/Format';
 import { projectColor } from '../../utils/Status';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
@@ -50,18 +53,40 @@ function Group({ title, children }) {
   );
 }
 
-export default function PlanSheet({ visible, onClose, date: presetDate, preset, onPick, title }) {
+export default function PlanSheet({ visible, onClose, date: presetDate, preset, presetTime, onPick, title }) {
   const dispatch = useDispatch();
   const { colors } = useTheme();
   const { show } = useToast();
   const inventory = useSelector((s) => s.tasks.inventory);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);
-  const [projectLists, setProjectLists] = useState(null);
+  const projectItems = useSelector((st) => st.projects.items);
+  const lists = useSelector((st) => st.projectTasks.byProject);
+  const projectLists = useMemo(() => projectItems
+    .map((project) => ({ project, tasks: (lists[project._id]?.tasks || []).filter((t) => t.status !== 'done' && t.status !== 'shelved') }))
+    .filter((l) => l.tasks.length), [projectItems, lists]);
   const [date, setDate] = useState(presetDate || todayKey());
   const [time, setTime] = useState(nextHalfHour());
   const [duration, setDuration] = useState(30);
   const [busy, setBusy] = useState(false);
+  const [timeTouched, setTimeTouched] = useState(false);
+  const [openId, setOpenId] = useState(0);
+  const segments = useSelector((s) => s.schedule.byDate[date]?.segments);
+  const dayEntries = useSelector((s) => s.planner.byDate[date]);
+
+  useEffect(() => {
+    if (!visible || onPick) return;
+    dispatch(fetchSchedule(date));
+    if (!dayEntries) dispatch(fetchPlanner(date));
+  }, [visible, date, onPick, dispatch]);
+
+  useEffect(() => {
+    if (!visible || timeTouched || presetTime || !segments) return;
+    const now = new Date();
+    const after = date === todayKey() ? now.getHours() * 60 + now.getMinutes() : 0;
+    const slot = freeSlot(segments, dayEntries || [], duration, { after });
+    if (slot) setTime(slot);
+  }, [visible, openId, segments, dayEntries, date, duration, timeTouched, presetTime]);
 
   useEffect(() => {
     if (!visible) return;
@@ -69,25 +94,17 @@ export default function PlanSheet({ visible, onClose, date: presetDate, preset, 
     setSelected(preset || null);
     const d = presetDate || todayKey();
     setDate(d);
-    setTime(d === todayKey() ? nextHalfHour() : '09:00');
+    setTime(presetTime || (d === todayKey() ? nextHalfHour() : '09:00'));
+    setTimeTouched(!!presetTime);
+    setOpenId((n) => n + 1);
     setDuration(30);
     if (!preset) {
       dispatch(fetchInventory());
-      setProjectLists(null);
-      (async () => {
-        try {
-          const { data } = await API.get('/projects');
-          const lists = await Promise.all(data.projects.map(async (p) => {
-            const res = await API.get(`/projects/${p._id}/tasks`, { params: { status: 'open' } });
-            return { project: p, tasks: res.data.tasks };
-          }));
-          setProjectLists(lists.filter((l) => l.tasks.length));
-        } catch {
-          setProjectLists([]);
-        }
-      })();
+      dispatch(fetchProjects()).then((r) => {
+        (r.payload && Array.isArray(r.payload) ? r.payload : []).forEach((p) => dispatch(fetchProjectTasks(p._id)));
+      });
     }
-  }, [visible, preset, presetDate, dispatch]);
+  }, [visible, preset, presetDate, presetTime, dispatch]);
 
   const q = query.trim().toLowerCase();
   const myTasks = useMemo(() => Object.entries(inventory).flatMap(([group, tasks]) =>
@@ -193,7 +210,18 @@ export default function PlanSheet({ visible, onClose, date: presetDate, preset, 
           />
         </View>
       )}
-      <TimeField label="Start time" value={time} onChange={setTime} />
+      <TimeField label="Start time" value={time} onChange={(t) => { setTime(t); setTimeTouched(true); }} />
+      {segments && (() => {
+        const start = timeToMinutes(time);
+        const place = placement(segments, start, start + duration);
+        if (place.ok) return <AppText variant="caption" tone="muted">In {place.segment.label} ({formatRange(place.segment.start, place.segment.end)})</AppText>;
+        return (
+          <AppText variant="caption" tone="danger" accessibilityLiveRegion="polite">
+            {place.segment ? `Overlaps ${place.segment.label} (${formatRange(place.segment.start, place.segment.end)}). ` : 'Runs past the end of a work period. '}
+            Pick a time inside a work period.
+          </AppText>
+        );
+      })()}
       <View style={{ gap: 8 }}>
         <AppText variant="label">Duration</AppText>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>

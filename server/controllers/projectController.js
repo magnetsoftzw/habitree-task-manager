@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const Project = require('../models/project');
 const Planner = require('../models/planner');
 const Task = require('../models/task');
@@ -39,6 +40,7 @@ exports.createProject = async(req, res) => {
         const { name, description, techStack, color } = req.body;
 
         const project = await Project.create({
+            ...withClientId(req.body),
             name,
             description: description || "No Description",
             owner: req.user.id,
@@ -200,6 +202,7 @@ exports.addTaskToProject = async (req, res) => {
         }
 
         const newTask = await Task.create({
+            ...withClientId(req.body),
             title: (typeof title === 'string' && title.trim()) || 'New Task',
             userId: req.user.id,
             projectId: projectId,

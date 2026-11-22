@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import API from '../../api/axiosInstance';
 import { toDateKey } from '../../utils/Format';
+import { resizeSchedule, shiftSchedule } from './scheduleSlice';
 
 export const fetchPlannerByDate = createAsyncThunk(
     'planner/fetchByDate',
@@ -101,6 +102,12 @@ const plannerSlice = createSlice({
             })
             .addCase(updatePlannerEntry.fulfilled, (state, action) => {
                 state.dayData = action.payload;
+            })
+            .addCase(shiftSchedule.fulfilled, (state, action) => {
+                if (action.payload.planner && action.payload.date === state.activeDate) state.dayData = action.payload.planner;
+            })
+            .addCase(resizeSchedule.fulfilled, (state, action) => {
+                if (action.payload.planner && action.payload.date === state.activeDate) state.dayData = action.payload.planner;
             })
     }
 })

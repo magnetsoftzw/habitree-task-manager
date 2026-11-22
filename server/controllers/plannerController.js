@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const mongoose = require('mongoose');
 const Planner = require('../models/planner');
 const Task = require('../models/task');
@@ -5,6 +6,14 @@ const ProjectTask = require('../models/projectTask');
 const User = require('../models/user');
 const { findAccessibleProject } = require('../utils/projectAccess');
 const { populatePlanner } = require('../utils/plannerPopulate');
+const { scheduleFor } = require('./scheduleController');
+const { toMinutes, intervalError } = require('../utils/scheduleLogic');
+
+const checkWindow = async (userId, date, time, duration) => {
+    const { segments } = await scheduleFor(userId, date);
+    const start = toMinutes(time);
+    return intervalError(segments, start, start + duration);
+};
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -87,6 +96,9 @@ exports.addTaskToPlanner = async (req, res) => {
         if (resolved.error) return badRequest(res, resolved.error, 'taskId');
         if (resolved.notFound) return res.status(404).json({ success: false, message: 'Task not found' });
 
+        const windowError = await checkWindow(userId, date, time || '08:00', duration || 30);
+        if (windowError) return badRequest(res, windowError, 'time');
+
         let planner = await Planner.findOne({ userId, date });
         if (!planner) {
             planner = new Planner({ userId, date, tasks: [] });
@@ -99,7 +111,7 @@ exports.addTaskToPlanner = async (req, res) => {
         );
 
         if (!alreadyScheduled) {
-            planner.tasks.push({ ...resolved.ref, subtaskId: subtaskId || null, time, duration, comments });
+            planner.tasks.push({ ...withClientId(req.body), ...resolved.ref, subtaskId: subtaskId || null, time, duration, comments });
             await planner.save();
         }
 
@@ -210,6 +222,14 @@ exports.updatePlannerEntry = async (req, res) => {
         if (time !== undefined && !TIME_RE.test(time)) return badRequest(res, 'time must be HH:MM', 'time');
         if (duration !== undefined && (!Number.isFinite(duration) || duration < 5 || duration > 720)) {
             return badRequest(res, 'duration must be between 5 and 720 minutes', 'duration');
+        }
+
+        if (time !== undefined || duration !== undefined) {
+            const existing = await Planner.findOne({ userId, date, 'tasks._id': id }).select('tasks.$');
+            const entry = existing?.tasks?.[0];
+            if (!entry) return res.status(404).json({ success: false, message: 'Planner entry not found' });
+            const windowError = await checkWindow(userId, date, time ?? entry.time, duration ?? entry.duration);
+            if (windowError) return badRequest(res, windowError, 'time');
         }
 
         const planner = await Planner.findOneAndUpdate(

@@ -8,12 +8,14 @@ import { updateUserProfile, updateUserSettings } from '../../store/slices/userSl
 import { useTheme } from '../../theme/ThemeContext';
 import { dailyGoalOf, formatGoal } from '../../utils/Format';
 import { DeleteAccountDialog, PasswordDialog } from './SettingsDialogs';
+import ScheduleTemplate from './ScheduleTemplate';
 import './Settings.css';
 
 const GOAL_OPTIONS = [240, 300, 360, 420, 480, 540, 600];
 const SECTIONS = [
     { id: 'profile', label: 'Profile' },
     { id: 'prefs', label: 'Preferences' },
+    { id: 'schedule', label: 'Daily schedule' },
     { id: 'danger', label: 'Account' },
 ];
 
@@ -205,6 +207,7 @@ const Settings = () => {
                             <>
                                 <ProfileForm key={`${profile._id}:${profile.username}:${profile.email}`} profile={profile} />
                                 <Preferences profile={profile} />
+                                <ScheduleTemplate />
                                 <section id="danger" className="st-danger" aria-labelledby="st-danger-h">
                                     <div className="st-danger-text">
                                         <h2 id="st-danger-h">Delete account</h2>

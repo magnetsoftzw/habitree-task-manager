@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const Task = require('../models/task');
 
 // @desc    Add a subtask to a task
@@ -8,6 +9,7 @@ exports.createSubtask = async (req, res) => {
         if(!task) return res.status(404).json({ success: false, message: "Task not found" });
 
         const newSubtask = {
+            ...withClientId(req.body),
             title: req.body.title,
             scheduledDate: req.body.scheduledDate || null,
             status: 'Not Started'

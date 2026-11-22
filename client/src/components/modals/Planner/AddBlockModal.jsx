@@ -6,19 +6,32 @@ import Modal from '../../ui/Modal';
 import StatusPill from '../../ui/StatusPill';
 import { assignTaskToDate } from '../../../store/slices/plannerSlice';
 import { colorFor, UNCATEGORIZED_COLOR } from '../../../utils/Colors';
-import { formatLongDate, fromDateKey, nextHourTime } from '../../../utils/Format';
+import { formatLongDate, fromDateKey, nextHourTime, toDateKey } from '../../../utils/Format';
+import { conflictFor, nextFreeSlot } from '../../../utils/Schedule';
+import useDaySchedule from '../../../hooks/UseDaySchedule';
+import TimeHint from '../../schedule/TimeHint';
+import '../Project/ProjectModals.css';
 import './AddBlockModal.css';
 
 const AddBlockModal = (props) => (props.isOpen ? <AddBlockDialog {...props} /> : null);
 
-const AddBlockDialog = ({ onClose, date, tasks = [], onPick, pickTitle, pickSubtitle, pickAction }) => {
+const minutesNow = () => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+};
+
+const AddBlockDialog = ({ onClose, date, tasks = [], onPick, pickTitle, pickSubtitle, pickAction, initialTime, fromMinute }) => {
     const dispatch = useDispatch();
-    const { scheduling } = useSelector((state) => state.planner);
+    const { scheduling, dayData, activeDate } = useSelector((state) => state.planner);
+    const segments = useDaySchedule(onPick ? null : date);
     const projects = useSelector((state) => state.projects.items);
     const [listTasks, setListTasks] = useState([]);
     const [query, setQuery] = useState('');
     const [selectedId, setSelectedId] = useState(null);
-    const [time, setTime] = useState(nextHourTime);
+    const [chosenTime, setTime] = useState(initialTime || '');
+    const planned = activeDate === date ? dayData?.tasks || [] : [];
+    const [startFrom] = useState(() => fromMinute ?? (date === toDateKey() ? minutesNow() : 0));
+    const time = chosenTime || nextFreeSlot(segments, planned, 30, startFrom) || nextHourTime();
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -26,7 +39,7 @@ const AddBlockDialog = ({ onClose, date, tasks = [], onPick, pickTitle, pickSubt
         let live = true;
         Promise.all(projects.map((p) => API.get(`/projects/${p._id}/tasks`)
             .then(({ data }) => (data.tasks || [])
-                .filter((t) => t.status !== 'done')
+                .filter((t) => t.status !== 'done' && t.status !== 'shelved')
                 .map((t) => ({ ...t, taskType: 'projectTask', projectId: p._id, project: p })))
             .catch(() => [])))
             .then((lists) => live && setListTasks(lists.flat()));
@@ -43,6 +56,7 @@ const AddBlockDialog = ({ onClose, date, tasks = [], onPick, pickTitle, pickSubt
 
     const handleAdd = async () => {
         if (!selectedId) return;
+        if (!onPick && conflictFor(segments, time, 30)) return;
         const picked = tasks.find((t) => t._id === selectedId) || listTasks.find((t) => t._id === selectedId);
         if (onPick) {
             onPick(picked);
@@ -124,6 +138,7 @@ const AddBlockDialog = ({ onClose, date, tasks = [], onPick, pickTitle, pickSubt
                 <label className="field add-block-time">
                     <span className="field-label">Start time</span>
                     <input type="time" className="input" value={time} onChange={(e) => setTime(e.target.value)} />
+                    <TimeHint segments={segments} time={time} duration={30} />
                 </label>
             )}
 

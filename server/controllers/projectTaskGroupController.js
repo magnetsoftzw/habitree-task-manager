@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const mongoose = require('mongoose');
 const ProjectTaskGroup = require('../models/projectTaskGroup');
 const ProjectTask = require('../models/projectTask');
@@ -42,7 +43,7 @@ exports.listGroups = handle(async (req, res) => {
 exports.createGroup = handle(async (req, res) => {
     const invalid = validateName(req.body.name);
     if (invalid) return fail(res, 400, invalid, 'name');
-    const group = await ProjectTaskGroup.create({ projectId: req.params.projectId, name: req.body.name.trim(), createdBy: req.user.id });
+    const group = await ProjectTaskGroup.create({ ...withClientId(req.body), projectId: req.params.projectId, name: req.body.name.trim(), createdBy: req.user.id });
     emit(req, 'projectTaskGroup:created', { group });
     res.status(201).json({ success: true, group });
 });

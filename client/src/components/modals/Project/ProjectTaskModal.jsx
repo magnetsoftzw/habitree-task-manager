@@ -9,6 +9,7 @@ const STATUSES = [
     { value: 'not_started', label: 'Not started' },
     { value: 'in_progress', label: 'In progress' },
     { value: 'done', label: 'Done' },
+    { value: 'shelved', label: 'Shelved' },
 ];
 
 const toInputDate = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');

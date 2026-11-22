@@ -158,17 +158,6 @@
     gap: 24px;
 }
 
-.ld-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 14px;
-    border-radius: var(--radius-pill);
-    background: var(--accent-soft);
-    color: var(--accent-ink, var(--accent));
-    font-size: 13px;
-    font-weight: 600;
-}
 
 .ld-hero h1 {
     margin: 0;

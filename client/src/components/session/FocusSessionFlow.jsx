@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import toast from 'react-hot-toast';
 import SessionSettings from '../modals/Session/SessionSettings';
 import SessionModal from '../modals/Session/SessionModal';
-import { saveWorkSession } from '../../store/slices/sessionSlice';
+import { logSession } from '../../store/slices/sessionSlice';
 
 const FocusSessionFlow = ({ isOpen, onClose, onSaved, task }) => {
     const dispatch = useDispatch();
@@ -30,21 +30,17 @@ const FocusSessionFlow = ({ isOpen, onClose, onSaved, task }) => {
                 isOpen={isOpen && running}
                 initialSeconds={seconds}
                 taskTitle={task?.title}
-                onFinish={async (data) => {
-                    try {
-                        await dispatch(saveWorkSession(task ? {
-                            ...data,
-                            taskType: task.taskType || 'task',
-                            taskId: task._id,
-                            ...(task.projectId && { projectId: task.projectId }),
-                            titleSnapshot: task.title,
-                        } : data)).unwrap();
-                        toast.success('Focus session saved');
-                        onSaved?.();
-                    } catch {
-                        toast.error('Could not save that session');
-                    }
+                onFinish={(data) => {
+                    dispatch(logSession(task ? {
+                        ...data,
+                        taskType: task.taskType || 'task',
+                        taskId: task._id,
+                        ...(task.projectId && { projectId: task.projectId }),
+                        titleSnapshot: task.title,
+                    } : data));
+                    toast.success(navigator.onLine === false ? "Focus session saved. It'll sync when you're back online." : 'Focus session saved');
                     close();
+                    onSaved?.();
                 }}
                 onClose={close}
             />

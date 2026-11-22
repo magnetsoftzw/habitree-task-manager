@@ -1,22 +1,16 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { createSlice } from '@reduxjs/toolkit';
 import API from '../../api/Client';
-import { errorMessage } from '../../utils/Format';
+import { fetcher, writer } from '../../sync/Thunks';
 
-export const fetchNotifications = createAsyncThunk('notifications/fetch', async (_, { rejectWithValue }) => {
-  try {
-    return (await API.get('/notifications')).data.notifications || [];
-  } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not load notifications'));
-  }
-});
+export const fetchNotifications = fetcher('notifications/fetch', async () =>
+  (await API.get('/notifications')).data.notifications || [], 'Could not load notifications');
 
-export const markNotificationRead = createAsyncThunk('notifications/read', async (id, { rejectWithValue }) => {
-  try {
-    await API.put(`/notifications/${id}/read`);
-    return id;
-  } catch (error) {
-    return rejectWithValue(errorMessage(error, 'Could not update the notification'));
-  }
+export const markNotificationRead = writer('notifications/read', {
+  request: (id) => ({ method: 'put', url: `/notifications/${id}/read` }),
+  local: (id) => id,
+  fromServer: (_, id) => id,
+  label: 'Marking a notification read',
+  fallback: 'Could not update the notification',
 });
 
 const notificationsSlice = createSlice({
@@ -30,7 +24,7 @@ const notificationsSlice = createSlice({
         state.loaded = true;
         state.error = null;
       })
-      .addCase(fetchNotifications.rejected, (state, action) => { state.error = action.payload; })
+      .addCase(fetchNotifications.rejected, (state, action) => { state.error = state.loaded ? null : action.payload; })
       .addCase(markNotificationRead.pending, (state, action) => {
         const n = state.items.find((x) => x._id === action.meta.arg);
         if (n) n.isRead = true;

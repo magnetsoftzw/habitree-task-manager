@@ -1,3 +1,4 @@
+const { withClientId } = require('../utils/clientId');
 const Roadmap = require('../models/roadmap');
 const Task = require('../models/task');
 
@@ -13,7 +14,7 @@ exports.saveRoadmap = async (req, res) => {
 
         const roadmap = await Roadmap.findOneAndUpdate(
             { userId: req.user.id, skillName },
-            { nodes, edges, zoom, pan, userId: req.user.id, skillName },
+            { nodes, edges, zoom, pan, userId: req.user.id, skillName, ...(withClientId(req.body)._id && { $setOnInsert: withClientId(req.body) }) },
             { upsert: true, new: true, runValidators: true }
         );
 

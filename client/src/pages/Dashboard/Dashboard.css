@@ -360,3 +360,46 @@
         flex: 1 1 100%;
     }
 }
+
+.dash-sync {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.dash-sync-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: dash-sync-pulse 1.6s ease-in-out infinite;
+}
+
+.dash-sync.is-error {
+    color: var(--danger-text);
+}
+
+.dash-sync-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+@keyframes dash-sync-pulse {
+    50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dash-sync-dot {
+        animation: none;
+    }
+}
