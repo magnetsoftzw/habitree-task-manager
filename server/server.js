@@ -1,4 +1,5 @@
 const http = require('http');
+const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
@@ -17,7 +18,10 @@ mongoose.connection.once('open', () => {
 
 let io = null;
 const relay = { to: (room) => (io ? io.to(room) : { emit: () => {} }) };
-const server = http.createServer(createApp(relay));
+const app = express();
+app.use(createApp(relay));
+
+const server = http.createServer(app);
 
 io = new Server(server, {
     cors: {
@@ -53,3 +57,5 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
+
+module.exports = app;
