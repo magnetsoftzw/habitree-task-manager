@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const { syncLayer } = require('./middleware/syncMiddleware');
+const { corsOptions } = require('./config/cors');
 
 const noopIo = { to: () => ({ emit: () => {} }) };
 
@@ -11,7 +12,7 @@ const createApp = (io) => {
 
     app.use((req, res, next) => { req.io = io || noopIo; next(); });
     app.use(helmet());
-    app.use(cors());
+    app.use(cors(corsOptions));
     app.use(express.json());
     app.use(express.urlencoded({ extended: false }));
     app.use(syncLayer());

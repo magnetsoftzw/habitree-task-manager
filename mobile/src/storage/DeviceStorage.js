@@ -18,9 +18,11 @@ const internalBackend = () => ({
     if (!info.exists) await FS.makeDirectoryAsync(INTERNAL_DIR, { intermediates: true });
   },
   async read(key) {
-    const uri = INTERNAL_DIR + fileName(key);
-    const info = await FS.getInfoAsync(uri);
-    return info.exists ? FS.readAsStringAsync(uri) : null;
+    try {
+      return await FS.readAsStringAsync(INTERNAL_DIR + fileName(key));
+    } catch {
+      return null;
+    }
   },
   write: (key, value) => FS.writeAsStringAsync(INTERNAL_DIR + fileName(key), value),
   remove: (key) => FS.deleteAsync(INTERNAL_DIR + fileName(key), { idempotent: true }),

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { ChevronDown, Pause, Play, Plus, Square } from 'lucide-react-native';
+import { ChevronDown, Pause, Play, Plus, Square, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../../theme/ThemeProvider';
 import { radius } from '../../theme/Tokens';
 import AppText from '../ui/AppText';
@@ -49,6 +49,18 @@ export default function FocusCard({ onPickTask }) {
       dispatch(fetchRangeStats('Today'));
     }
     dispatch(resetFocus());
+  };
+
+  const discard = () => {
+    const spent = Math.floor(elapsedOf(focus) / 60000);
+    Alert.alert(
+      'Discard this session?',
+      spent >= 1 ? `The ${spent} min you've focused so far won't be saved.` : "This session won't be saved.",
+      [
+        { text: 'Keep session', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => { dispatch(resetFocus()); show('Session discarded'); } },
+      ],
+    );
   };
 
   const label = focus.status === 'running' ? 'Pause session' : focus.status === 'paused' ? 'Resume session' : 'Start focus session';
@@ -110,15 +122,28 @@ export default function FocusCard({ onPickTask }) {
         </Pressable>
       )}
       {active && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={onBreak ? 'Skip break' : 'End and save session'}
-          onPress={finish}
-          style={{ alignSelf: 'flex-start', minHeight: 36, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.darkBorder, backgroundColor: colors.darkRaised, flexDirection: 'row', alignItems: 'center', gap: 6 }}
-        >
-          <Square size={12} color={colors.onDarkSoft} fill={colors.onDarkSoft} />
-          <AppText variant="metaStrong" color={colors.onDarkSoft}>{onBreak ? 'Skip break' : 'End & save'}</AppText>
-        </Pressable>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={onBreak ? 'Skip break' : 'End and save session'}
+            onPress={finish}
+            style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.darkBorder, backgroundColor: colors.darkRaised, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+          >
+            <Square size={12} color={colors.onDarkSoft} fill={colors.onDarkSoft} />
+            <AppText variant="metaStrong" color={colors.onDarkSoft}>{onBreak ? 'Skip break' : 'End & save'}</AppText>
+          </Pressable>
+          {!onBreak && focus.status === 'paused' && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Discard session without saving"
+              onPress={discard}
+              style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.darkBorder, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Trash2 size={13} color={colors.onDarkSoft} />
+              <AppText variant="metaStrong" color={colors.onDarkSoft}>Discard</AppText>
+            </Pressable>
+          )}
+        </View>
       )}
       <FocusLengthSheet visible={sheet === 'length'} onClose={() => setSheet(null)} />
       <LogTimeSheet visible={sheet === 'log'} onClose={() => setSheet(null)} />

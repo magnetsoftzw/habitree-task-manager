@@ -31,6 +31,7 @@ const projectSchema = new mongoose.Schema({
 
 projectSchema.virtual('formattedDate').get(function() {
     const d = this.createdAt;
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
     return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 });
 

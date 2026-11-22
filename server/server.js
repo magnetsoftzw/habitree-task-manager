@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const createApp = require('./app');
+const { isAllowedOrigin } = require('./config/cors');
 const runMigrations = require('./utils/migrations');
 const { findAccessibleProject } = require('./utils/projectAccess');
 
@@ -20,7 +21,7 @@ const server = http.createServer(createApp(relay));
 
 io = new Server(server, {
     cors: {
-        origin: process.env.FRONTEND_URL || '*',
+        origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     },
 });

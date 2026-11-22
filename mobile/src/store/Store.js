@@ -17,7 +17,7 @@ import sync from './slices/SyncSlice';
 import { DeviceStorage } from '../storage/DeviceStorage';
 import { setUnauthorizedHandler } from '../api/Client';
 
-const local = (key, reducer, blacklist = [], throttle = 800) => persistReducer({ key: `data_${key}`, storage: DeviceStorage, blacklist, throttle }, reducer);
+const local = (key, reducer, blacklist = [], throttle = 800) => persistReducer({ key: `data_${key}`, storage: DeviceStorage, blacklist, throttle, timeout: 0 }, reducer);
 
 const DATA = {
   tasks: local('tasks', tasks, ['loading', 'error']),
@@ -65,7 +65,9 @@ const persisted = persistReducer(
 export const store = configureStore({
   reducer: persisted,
   middleware: (getDefault) => getDefault({
+    immutableCheck: false,
     serializableCheck: {
+      warnAfter: 200,
       ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER, 'projectTasks/patchLocal', 'sync/enqueue'],
     },
   }),
