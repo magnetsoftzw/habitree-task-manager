@@ -113,14 +113,14 @@ exports.addTaskToPlanner = async (req, res) => {
             planner = new Planner({ userId, date, tasks: [] });
         }
 
+        const sub = resolved.ref.taskType === 'projectTaskGroup' ? null : subtaskId || null;
         const alreadyScheduled = planner.tasks.find((t) =>
             (t.taskType || 'task') === resolved.ref.taskType
             && t.taskId?.toString() === String(resolved.ref.taskId)
-            && (t.subtaskId || null) === (subtaskId || null)
+            && (t.subtaskId || null) === sub
         );
 
         if (!alreadyScheduled) {
-            const sub = resolved.ref.taskType === 'projectTaskGroup' ? null : subtaskId || null;
             planner.tasks.push({ ...withClientId(req.body), ...resolved.ref, subtaskId: sub, time, duration, comments });
             await planner.save();
         }

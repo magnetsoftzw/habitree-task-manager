@@ -17,6 +17,7 @@ import { formatRange, freeSlot, placement } from '../../utils/Schedule';
 import { fetchInventory } from '../../store/slices/TasksSlice';
 import { addDays, formatDuration, fromDateKey, longDate, nextHalfHour, timeToMinutes, toDateKey, todayKey } from '../../utils/Format';
 import { projectColor } from '../../utils/Status';
+import { refForTaskGroup } from '../../store/TaskThunks';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
@@ -63,7 +64,13 @@ export default function PlanSheet({ visible, onClose, date: presetDate, preset, 
   const projectItems = useSelector((st) => st.projects.items);
   const lists = useSelector((st) => st.projectTasks.byProject);
   const projectLists = useMemo(() => projectItems
-    .map((project) => ({ project, tasks: (lists[project._id]?.tasks || []).filter((t) => t.status !== 'done' && t.status !== 'shelved') }))
+    .map((project) => {
+      const tasks = (lists[project._id]?.tasks || []).filter((t) => t.status !== 'done' && t.status !== 'shelved');
+      const groups = (lists[project._id]?.groups || [])
+        .map((g) => ({ ...g, open: tasks.filter((t) => t.groupId === g._id).length }))
+        .filter((g) => g.open > 0);
+      return { project, tasks, groups };
+    })
     .filter((l) => l.tasks.length), [projectItems, lists]);
   const [date, setDate] = useState(presetDate || todayKey());
   const [time, setTime] = useState(nextHalfHour());
@@ -159,11 +166,21 @@ export default function PlanSheet({ visible, onClose, date: presetDate, preset, 
             ))}
           </Group>
         )}
-        {projectLists === null ? <ActivityIndicator /> : projectLists.map(({ project, tasks }) => {
+        {projectLists === null ? <ActivityIndicator /> : projectLists.map(({ project, tasks, groups }) => {
           const visibleTasks = tasks.filter((t) => matches(t.title) || t.subtasks.some((s) => matches(s.title)));
-          if (!visibleTasks.length) return null;
+          const visibleGroups = groups.filter((g) => matches(`${g.name} - ${project.name}`));
+          if (!visibleTasks.length && !visibleGroups.length) return null;
           return (
             <Group key={project._id} title={`Project tasks · ${project.name}`}>
+              {visibleGroups.map((g) => (
+                <PickRow
+                  key={`group-${g._id}`}
+                  title={`${g.name} - ${project.name}`}
+                  meta={`Whole group · ${g.open} open task${g.open === 1 ? '' : 's'}`}
+                  color={projectColor(project)}
+                  onPress={() => choose(refForTaskGroup(g, project))}
+                />
+              ))}
               {visibleTasks.map((t) => (
                 <PickRow
                   key={t._id}
@@ -177,7 +194,7 @@ export default function PlanSheet({ visible, onClose, date: presetDate, preset, 
           );
         })}
         {projectLists !== null && myTasks.filter((t) => matches(t.title)).length === 0
-          && !projectLists.some((l) => l.tasks.some((t) => matches(t.title))) && (
+          && !projectLists.some((l) => l.tasks.some((t) => matches(t.title)) || l.groups.some((g) => matches(`${g.name} - ${l.project.name}`))) && (
           <AppText variant="body" tone="muted" style={{ textAlign: 'center', paddingVertical: 16 }}>
             {q ? 'No open tasks match your search.' : 'No open tasks yet. Create a task first, then plan it here.'}
           </AppText>

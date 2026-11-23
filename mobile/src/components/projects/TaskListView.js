@@ -19,7 +19,7 @@ import {
   renameTaskGroup, reorderProjectTasks, reorderSubtasks, updateProjectTask, updateSubtask,
 } from '../../store/slices/ProjectTasksSlice';
 import { fetchPlannerRange } from '../../store/slices/PlannerSlice';
-import { refForListTask, refForSubtask } from '../../store/TaskThunks';
+import { refForListTask, refForSubtask, refForTaskGroup } from '../../store/TaskThunks';
 import { addDays, isOverdue, shortDate, toDateKey, todayKey } from '../../utils/Format';
 import { LIST_STATUS_LABELS } from '../../utils/Status';
 
@@ -243,6 +243,7 @@ export default function TaskListView({ projectId }) {
   const { show } = useToast();
   const startFocusOn = useStartFocus();
   const bucket = useSelector((s) => s.projectTasks.byProject[projectId]);
+  const project = useSelector((s) => (s.projects.current?._id === projectId ? s.projects.current : s.projects.items.find((p) => p._id === projectId)));
   const planned = useSelector((s) => s.planner.range);
   const [open, setOpen] = useState({});
   const [filter, setFilter] = useState('all');
@@ -519,6 +520,7 @@ export default function TaskListView({ projectId }) {
         onClose={() => setGroupMenu(null)}
         title={groupMenu?.name}
         options={groupMenu ? [
+          { label: 'Add to plan', icon: CalendarPlus, hint: `Plans "${groupMenu.name} - ${project?.name || 'Project'}" as one block`, onPress: () => setPlanning(refForTaskGroup(groupMenu, project || { _id: projectId })) },
           { label: 'Add task to this group', icon: Plus, onPress: () => setForm({ groupId: groupMenu._id }) },
           { label: 'Rename group', icon: Pencil, onPress: () => setGroupPrompt(groupMenu) },
           { label: 'Delete group', icon: Trash2, danger: true, hint: 'Its tasks move to No group', onPress: () => removeGroup(groupMenu) },

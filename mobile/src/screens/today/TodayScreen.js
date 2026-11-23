@@ -22,7 +22,7 @@ import ScheduleCard from '../../components/schedule/ScheduleCard';
 import { fetchSchedule } from '../../store/slices/ScheduleSlice';
 import { freeSlot } from '../../utils/Schedule';
 import { fetchActivity, fetchRangeStats } from '../../store/slices/StatsSlice';
-import { entryInfo, refForEntry, setRefDone } from '../../store/TaskThunks';
+import { entryInfo, isGroupEntry, refForEntry, setRefDone } from '../../store/TaskThunks';
 import { clock, formatDuration, formatGoal, formatMinutes, fullDate, greeting, initials, nextHalfHour, timeToMinutes, todayKey } from '../../utils/Format';
 import { TASK_STATUS_LABELS } from '../../utils/Status';
 import { syncPlanReminders } from '../../utils/Notifications';
@@ -59,7 +59,9 @@ function PlanRow({ entry, state, upNext, onAction, onOpen }) {
   const done = state === 'done';
   const now = state === 'now';
   const color = task?.groupId?.color || task?.projectId?.color || colors.textMuted;
-  const context = info?.subtask ? `Subtask of ${task.title}` : task?.groupId?.name || task?.projectId?.name || 'Uncategorized';
+  const context = info?.subtask ? `Subtask of ${task.title}`
+    : isGroupEntry(entry) && task ? `${task.doneCount || 0} of ${task.taskCount || 0} tasks done`
+      : task?.groupId?.name || task?.projectId?.name || 'Uncategorized';
   const statusText = !task ? 'Removed task' : done ? 'Done' : now ? 'In progress' : upNext ? 'Up next' : state === 'past' ? 'Missed' : 'Planned';
 
   return (
@@ -93,7 +95,7 @@ function PlanRow({ entry, state, upNext, onAction, onOpen }) {
       {task && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={done ? `Completed. Mark ${title} not done` : `Start session for ${title}`}
+          accessibilityLabel={done ? (isGroupEntry(entry) ? `Completed. Options for ${title}` : `Completed. Mark ${title} not done`) : `Start session for ${title}`}
           onPress={onAction}
           style={{
             width: 44, height: 44, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center',
@@ -193,15 +195,15 @@ export default function TodayScreen({ navigation }) {
   const menuInfo = menuEntry ? entryInfo(menuEntry) : null;
   const menuOptions = menuEntry ? [
     menuInfo && !menuInfo.done && { label: 'Start focus session', icon: Play, onPress: () => startFocusOn(refForEntry(menuEntry), { stay: true }) },
-    menuInfo && {
+    menuInfo && !isGroupEntry(menuEntry) && {
       label: menuInfo.done ? 'Mark not done' : 'Mark done',
       icon: Check,
       onPress: () => toggleDone(menuEntry, !menuInfo.done),
     },
     { label: 'Change time or length', icon: Clock, onPress: () => setEditEntry(menuEntry) },
-    menuEntry.taskId && menuEntry.taskType !== 'projectTask' && { label: 'Open task', icon: ExternalLink, onPress: () => navigation.navigate('TaskDetails', { taskId: menuEntry.taskId._id }) },
-    menuEntry.taskId && menuEntry.taskType === 'projectTask' && { label: 'Open project', icon: ExternalLink, onPress: () => navigation.navigate('Projects', { screen: 'ProjectDetail', params: { projectId: menuEntry.projectId, view: 'list' }, initial: false }) },
-    menuInfo && !menuInfo.done && !menuInfo.subtask && menuEntry.taskType !== 'projectTask' && {
+    menuEntry.taskId && (menuEntry.taskType || 'task') === 'task' && { label: 'Open task', icon: ExternalLink, onPress: () => navigation.navigate('TaskDetails', { taskId: menuEntry.taskId._id }) },
+    menuEntry.taskId && (menuEntry.taskType === 'projectTask' || isGroupEntry(menuEntry)) && { label: 'Open project', icon: ExternalLink, onPress: () => navigation.navigate('Projects', { screen: 'ProjectDetail', params: { projectId: menuEntry.projectId, view: 'list' }, initial: false }) },
+    menuInfo && !menuInfo.done && !menuInfo.subtask && (menuEntry.taskType || 'task') === 'task' && {
       label: 'Shelve task',
       icon: Archive,
       hint: 'Set it aside and remove it from the plan',
@@ -272,7 +274,7 @@ export default function TodayScreen({ navigation }) {
               state={state}
               upNext={entry._id === upNextId}
               onOpen={() => setMenuEntry(entry)}
-              onAction={() => (state === 'done' ? toggleDone(entry, false) : startFocusOn(refForEntry(entry), { stay: true }))}
+              onAction={() => (state !== 'done' ? startFocusOn(refForEntry(entry), { stay: true }) : isGroupEntry(entry) ? setMenuEntry(entry) : toggleDone(entry, false))}
             />
           )) : entries && (
             <EmptyState title="Nothing planned yet" body="Pick a few tasks to build your day, or start a free session above." />

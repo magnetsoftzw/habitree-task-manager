@@ -20,6 +20,15 @@ export const refForListTask = (task, projectId) => ({
   title: task.title,
 });
 
+export const refForTaskGroup = (group, project) => ({
+  taskType: 'projectTaskGroup',
+  taskId: group._id,
+  projectId: project?._id || group.projectId,
+  title: `${group.name} - ${project?.name || 'Project'}`,
+});
+
+export const isGroupEntry = (entry) => entry?.taskType === 'projectTaskGroup';
+
 export const refForSubtask = (task, subtask, projectId) => ({
   ...(projectId ? refForListTask(task, projectId) : refForTask(task)),
   subtaskId: subtask._id,
@@ -76,6 +85,7 @@ const setSubtaskDone = async (ref, done, dispatch, getState) => {
 };
 
 export const setRefDone = createAsyncThunk('tasks/setRefDone', async ({ ref, done, previousStatus }, { dispatch, getState, rejectWithValue }) => {
+  if (ref.taskType === 'projectTaskGroup') return rejectWithValue('A group is done when all of its tasks are done. Tick them off in the project.');
   if (ref.subtaskId) {
     dispatch(markEntrySubtask({ taskId: ref.taskId, subtaskId: ref.subtaskId, done }));
     try {

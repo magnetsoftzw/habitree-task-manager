@@ -9,7 +9,32 @@ export const fetchPlanner = fetcher('planner/fetch', async (date) => ({
   planner: (await API.get(`/planner/${date}`)).data,
 }));
 
+const snapshotGroup = (state, { taskId, projectId, title }) => {
+  const bucket = state.projectTasks.byProject[projectId];
+  const project = state.projects.items.find((p) => p._id === projectId) || { _id: projectId };
+  const group = bucket?.groups.find((g) => g._id === taskId);
+  const tasks = (bucket?.tasks || []).filter((t) => t.groupId === taskId);
+  const live = tasks.filter((t) => t.status !== 'shelved');
+  const status = live.length && live.every((t) => t.status === 'done') ? 'Completed'
+    : live.some((t) => t.status === 'in_progress' || t.status === 'done') ? 'On-Going' : 'Not Started';
+  return {
+    _id: taskId,
+    isGroup: true,
+    title: group && project.name ? `${group.name} - ${project.name}` : title,
+    name: group?.name,
+    status,
+    category: 'Project',
+    taskCount: tasks.length,
+    doneCount: tasks.filter((t) => t.status === 'done').length,
+    tasks: tasks.map((t) => ({ _id: t._id, title: t.title })),
+    subtasks: [],
+    groupId: project,
+    projectId: project,
+  };
+};
+
 const snapshotTask = (state, { taskType, taskId, projectId, subtaskId, title, parentTitle }) => {
+  if (taskType === 'projectTaskGroup') return snapshotGroup(state, { taskId, projectId, title });
   if (taskType === 'projectTask') {
     const t = state.projectTasks.byProject[projectId]?.tasks.find((x) => x._id === taskId);
     if (t) return { ...t, projectId: state.projects.items.find((p) => p._id === projectId) || { _id: projectId } };
