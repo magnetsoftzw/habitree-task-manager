@@ -27,7 +27,8 @@ const PlanEntryDialog = ({ onClose, item, activeDate }) => {
     const navigate = useNavigate();
     const entry = resolveEntry(item);
     const task = item.taskId;
-    const isList = item.taskType === 'projectTask';
+    const isGroup = item.taskType === 'projectTaskGroup';
+    const isList = item.taskType === 'projectTask' || isGroup;
     const subtask = entry?.subtask;
     const projectId = item.projectId?._id || item.projectId || task?.projectId?._id || task?.groupId?._id;
     const [time, setTime] = useState(item.time || '');
@@ -96,7 +97,7 @@ const PlanEntryDialog = ({ onClose, item, activeDate }) => {
             isOpen
             onClose={onClose}
             title={entry.title}
-            subtitle={subtask ? `Subtask of ${task.title}` : undefined}
+            subtitle={subtask ? `Subtask of ${task.title}` : isGroup ? entry.progress : undefined}
             width={500}
             footer={(
                 <>
@@ -137,10 +138,27 @@ const PlanEntryDialog = ({ onClose, item, activeDate }) => {
 
                 {item.comments && <p className="pe-notes">{item.comments}</p>}
 
+                {isGroup && (
+                    task.tasks?.length ? (
+                        <ul className="pe-group-tasks" aria-label={`Tasks in ${task.name || 'this group'}`}>
+                            {task.tasks.map((t) => (
+                                <li key={t._id} className={t.status === 'Completed' ? 'is-done' : ''}>
+                                    <span className="pe-group-task-title">{t.title}</span>
+                                    <StatusPill status={t.status} />
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="pe-notes">This group has no tasks yet.</p>
+                    )
+                )}
+
                 <div className="pe-actions">
-                    <button type="button" className="btn" onClick={markDone} disabled={done || !!busy}>
-                        <Check size={16} aria-hidden="true" /> {done ? 'Done' : busy === 'done' ? 'Saving…' : 'Mark done'}
-                    </button>
+                    {!isGroup && (
+                        <button type="button" className="btn" onClick={markDone} disabled={done || !!busy}>
+                            <Check size={16} aria-hidden="true" /> {done ? 'Done' : busy === 'done' ? 'Saving…' : 'Mark done'}
+                        </button>
+                    )}
                     <button type="button" className="btn" onClick={openTask}>
                         <ExternalLink size={16} aria-hidden="true" /> {isList ? 'Open task list' : 'Open task'}
                     </button>

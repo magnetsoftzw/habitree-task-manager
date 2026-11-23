@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CalendarPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import Menu from '../../ui/Menu';
 import { InlineInput } from './TaskListRow';
 
-const TaskGroupHeader = ({ group, count, onRename, onDelete, onAddTask }) => {
+const TaskGroupHeader = ({ group, count, onRename, onDelete, onAddTask, onPlan }) => {
     const [editing, setEditing] = useState(false);
 
     return (
@@ -28,6 +28,7 @@ const TaskGroupHeader = ({ group, count, onRename, onDelete, onAddTask }) => {
                     <Menu
                         label={`Options for ${group.name}`}
                         items={[
+                            ...(onPlan ? [{ label: 'Add to planner', icon: <CalendarPlus size={16} />, onSelect: onPlan }] : []),
                             { label: 'Rename group', icon: <Pencil size={16} />, onSelect: () => setEditing(true) },
                             { label: 'Delete group', icon: <Trash2 size={16} />, danger: true, onSelect: onDelete },
                         ]}

@@ -12,7 +12,9 @@ export const resolveEntry = (entry) => {
         title: subtask?.title || task.title,
         group: task.groupId?.name || 'Uncategorized',
         color: task.groupId ? colorFor(task.groupId) : UNCATEGORIZED_COLOR,
-        kind: entry.taskType === 'projectTask' ? 'Project task' : task.category || 'General',
+        kind: entry.taskType === 'projectTaskGroup' ? 'Project group' : entry.taskType === 'projectTask' ? 'Project task' : task.category || 'General',
+        isGroup: entry.taskType === 'projectTaskGroup',
+        progress: entry.taskType === 'projectTaskGroup' ? `${task.doneCount || 0} of ${task.taskCount || 0} done` : null,
         state: done ? 'done' : now ? 'now' : 'next',
     };
 };

@@ -36,7 +36,7 @@ const AddToPlanDialog = ({ onClose, task, projectId, taskType = 'projectTask', s
                 date: target,
                 taskType,
                 taskId: task._id,
-                projectId: taskType === 'projectTask' ? projectId : undefined,
+                projectId: taskType === 'task' ? undefined : projectId,
                 subtaskId: subtask?._id || null,
                 time: time || undefined,
                 duration,

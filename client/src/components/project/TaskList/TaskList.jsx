@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import toast from 'react-hot-toast';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { FolderPlus, Plus } from 'lucide-react';
@@ -26,6 +26,10 @@ const TaskList = ({ projectId, tasks, groups = [], query, onlyOpen, statusFilter
     const [expanded, setExpanded] = useState(() => new Set());
     const [sticky, setSticky] = useState(() => new Set());
     const [planTask, setPlanTask] = useState(null);
+    const [planGroup, setPlanGroup] = useState(null);
+    const projectName = useSelector((s) => (s.projects.currentProject?._id === projectId
+        ? s.projects.currentProject.name
+        : s.projects.items.find((p) => p._id === projectId)?.name)) || 'Project';
     const [editTask, setEditTask] = useState(null);
     const [planned, setPlanned] = useState({});
     const [planVersion, setPlanVersion] = useState(0);
@@ -307,6 +311,7 @@ const TaskList = ({ projectId, tasks, groups = [], query, onlyOpen, statusFilter
                                                         onRename={(name) => renameGroup(section.group, name)}
                                                         onDelete={() => removeGroup(section.group, section.all.length)}
                                                         onAddTask={() => setAddingIn(section.key)}
+                                                        onPlan={() => setPlanGroup(section.group)}
                                                     />
                                                 )}
                                                 {section.shown.map((task, i) => (
@@ -389,6 +394,13 @@ const TaskList = ({ projectId, tasks, groups = [], query, onlyOpen, statusFilter
             </div>
 
             <AddToPlanModal isOpen={Boolean(planTask)} task={planTask} projectId={projectId} onClose={() => { setPlanTask(null); setPlanVersion((v) => v + 1); }} />
+            <AddToPlanModal
+                isOpen={Boolean(planGroup)}
+                task={planGroup && { _id: planGroup._id, title: `${planGroup.name} - ${projectName}` }}
+                projectId={projectId}
+                taskType="projectTaskGroup"
+                onClose={() => setPlanGroup(null)}
+            />
             <ConfirmModal isOpen={Boolean(confirm)} {...confirm} onClose={() => setConfirm(null)} />
             <MoveToGroupModal isOpen={Boolean(groupTask)} task={groupTask} groups={groups} onClose={() => setGroupTask(null)} onMove={(groupId) => moveToGroup(groupTask, groupId)} />
             <ProjectTaskModal isOpen={Boolean(editTask)} task={editTask} projectId={projectId} groups={groups} onClose={() => setEditTask(null)} />

@@ -224,7 +224,7 @@ const Calendar = () => {
                                                     <span className="cal-event-title">{r?.title || 'Task'}</span>
                                                     <span className="cal-event-meta">
                                                         {time} · {entryStatus(e, selected, today)}
-                                                        {e.taskType === 'projectTask' && r?.group ? ` · ${r.group}` : ''}
+                                                        {(e.taskType === 'projectTask' || e.taskType === 'projectTaskGroup') && r?.group && !r.isGroup ? ` · ${r.group}` : ''}
                                                     </span>
                                                 </div>
                                             </li>

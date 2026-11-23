@@ -40,6 +40,12 @@ const PlanBlock = ({ entry, upNext = false, onOpen, onStart }) => {
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>{info.kind}</span>
+                    {info.progress && (
+                        <>
+                            <span aria-hidden="true">·</span>
+                            <span>{info.progress}</span>
+                        </>
+                    )}
                     {info.subtask && (
                         <>
                             <span aria-hidden="true">·</span>

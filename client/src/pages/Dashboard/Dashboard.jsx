@@ -114,7 +114,7 @@ const Dashboard = () => {
         ? {
             ...nowEntry.taskId,
             taskType: nowEntry.taskType || 'task',
-            projectId: nowEntry.taskType === 'projectTask' ? nowEntry.taskId.groupId?._id : undefined,
+            projectId: nowEntry.taskType === 'projectTask' || nowEntry.taskType === 'projectTaskGroup' ? nowEntry.taskId.groupId?._id : undefined,
         }
         : null;
     const nowTime = new Date().toTimeString().slice(0, 5);

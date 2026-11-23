@@ -7,6 +7,7 @@ const ShiftConfirmModal = ({ pending, onCancel, onConfirm, busy }) => {
     const { segment, offset, edge, preview = {} } = pending;
     const growth = edge === 'start' ? -offset : offset;
     const removed = preview.removed || [];
+    const shelving = removed.filter((r) => r.taskType !== 'projectTaskGroup').length;
     const restLost = preview.restLostMinutes || 0;
     const workLost = preview.workLostMinutes || 0;
     const last = (preview.segments || []).filter((s) => s.kind === 'work').pop();
@@ -25,7 +26,7 @@ const ShiftConfirmModal = ({ pending, onCancel, onConfirm, busy }) => {
                 <>
                     <button type="button" className="btn" onClick={onCancel}>Cancel</button>
                     <button type="button" className="btn btn-danger" onClick={onConfirm} disabled={busy}>
-                        {busy ? 'Saving…' : removed.length ? `${edge ? 'Resize' : 'Move'} and shelve ${removed.length}` : `${edge ? 'Resize' : 'Move'} anyway`}
+                        {busy ? 'Saving…' : shelving ? `${edge ? 'Resize' : 'Move'} and shelve ${shelving}` : `${edge ? 'Resize' : 'Move'} anyway`}
                     </button>
                 </>
             )}
@@ -65,6 +66,7 @@ const ShiftConfirmModal = ({ pending, onCancel, onConfirm, busy }) => {
                                     <span className="sc-removed-title">
                                         {r.title || 'Task'}
                                         {r.parentTitle && <span className="sc-removed-parent"> · {r.parentTitle}</span>}
+                                        {r.taskType === 'projectTaskGroup' && <span className="sc-removed-parent"> · Group, only removed from the plan</span>}
                                     </span>
                                     <span className="sc-removed-meta tabular">{r.time ? clockLabel(Number(r.time.slice(0, 2)) * 60 + Number(r.time.slice(3))) : ''} · {durationLabel(r.duration || 30)}</span>
                                 </li>
