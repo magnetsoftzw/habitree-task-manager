@@ -11,7 +11,7 @@ const PlannerSchema = new mongoose.Schema({
         required: true
     },
     tasks: [{
-        taskType: { type: String, enum: ['task', 'projectTask'], default: 'task' },
+        taskType: { type: String, enum: ['task', 'projectTask', 'projectTaskGroup'], default: 'task' },
         taskId: {
             type: mongoose.Schema.Types.ObjectId,
             required: true

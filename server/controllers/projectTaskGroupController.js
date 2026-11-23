@@ -2,6 +2,7 @@ const { withClientId } = require('../utils/clientId');
 const mongoose = require('mongoose');
 const ProjectTaskGroup = require('../models/projectTaskGroup');
 const ProjectTask = require('../models/projectTask');
+const Planner = require('../models/planner');
 const { findAccessibleProject } = require('../utils/projectAccess');
 
 const fail = (res, status, message, field) =>
@@ -66,6 +67,10 @@ exports.deleteGroup = handle(async (req, res) => {
     if (!group) return;
     await ProjectTask.updateMany({ projectId: req.params.projectId, groupId: group._id }, { $set: { groupId: null } });
     await group.deleteOne();
+    await Planner.updateMany(
+        { date: { $gte: new Date().toISOString().split('T')[0] }, 'tasks.taskId': group._id },
+        { $pull: { tasks: { taskType: 'projectTaskGroup', taskId: group._id } } },
+    );
     emit(req, 'projectTaskGroup:deleted', { groupId: String(group._id) });
     res.status(204).end();
 });

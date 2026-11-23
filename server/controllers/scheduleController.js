@@ -72,6 +72,7 @@ const moveCardToTodo = async (task) => {
 };
 
 const shelveEntry = async (req, entry) => {
+    if (entry.taskType === 'projectTaskGroup') return;
     if ((entry.taskType || 'task') === 'projectTask') {
         const task = await ProjectTask.findById(entry.taskId);
         if (!task) return;

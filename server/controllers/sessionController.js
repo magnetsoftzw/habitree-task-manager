@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Session = require('../models/session');
 const Task = require('../models/task');
 const ProjectTask = require('../models/projectTask');
+const ProjectTaskGroup = require('../models/projectTaskGroup');
 const { findAccessibleProject } = require('../utils/projectAccess');
 
 const resolveSessionTask = async (userId, { taskType, taskId, projectId }) => {
@@ -16,7 +17,15 @@ const resolveSessionTask = async (userId, { taskType, taskId, projectId }) => {
         return { taskType, taskId: task._id, projectId: project._id, titleSnapshot: task.title };
     }
 
-    if (taskType !== 'task') return { error: "taskType must be 'task' or 'projectTask'" };
+    if (taskType === 'projectTaskGroup') {
+        if (!mongoose.isValidObjectId(projectId)) return { error: 'projectId is required for project task groups' };
+        const project = await findAccessibleProject(projectId, userId);
+        const group = project && await ProjectTaskGroup.findOne({ _id: taskId, projectId });
+        if (!group) return { error: 'Task group not found', status: 404 };
+        return { taskType, taskId: group._id, projectId: project._id, titleSnapshot: `${group.name} - ${project.name}` };
+    }
+
+    if (taskType !== 'task') return { error: "taskType must be 'task', 'projectTask' or 'projectTaskGroup'" };
     const task = await Task.findById(taskId).select('userId projectId title');
     if (!task) return { error: 'Task not found', status: 404 };
     if (String(task.userId) !== String(userId)) {

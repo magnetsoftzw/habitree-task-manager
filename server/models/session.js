@@ -26,7 +26,7 @@ const sessionSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
-    taskType: { type: String, enum: ['task', 'projectTask', null], default: null },
+    taskType: { type: String, enum: ['task', 'projectTask', 'projectTaskGroup', null], default: null },
     taskId: { type: mongoose.Schema.Types.ObjectId, default: null },
     projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
     titleSnapshot: { type: String, default: '' },

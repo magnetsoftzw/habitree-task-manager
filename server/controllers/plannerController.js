@@ -3,9 +3,10 @@ const mongoose = require('mongoose');
 const Planner = require('../models/planner');
 const Task = require('../models/task');
 const ProjectTask = require('../models/projectTask');
+const ProjectTaskGroup = require('../models/projectTaskGroup');
 const User = require('../models/user');
 const { findAccessibleProject } = require('../utils/projectAccess');
-const { populatePlanner } = require('../utils/plannerPopulate');
+const { populatePlanner, groupStatus } = require('../utils/plannerPopulate');
 const { scheduleFor } = require('./scheduleController');
 const { toMinutes, intervalError } = require('../utils/scheduleLogic');
 
@@ -31,7 +32,15 @@ const resolveTaskRef = async (userId, { taskType = 'task', taskId, projectId }) 
         return task ? { ref: { taskType, taskId, projectId } } : { notFound: true };
     }
 
-    if (taskType !== 'task') return { error: "taskType must be 'task' or 'projectTask'" };
+    if (taskType === 'projectTaskGroup') {
+        if (!mongoose.isValidObjectId(projectId)) return { error: 'projectId is required for project task groups' };
+        const project = await findAccessibleProject(projectId, userId);
+        if (!project) return { notFound: true };
+        const group = await ProjectTaskGroup.exists({ _id: taskId, projectId });
+        return group ? { ref: { taskType, taskId, projectId } } : { notFound: true };
+    }
+
+    if (taskType !== 'task') return { error: "taskType must be 'task', 'projectTask' or 'projectTaskGroup'" };
     const task = await Task.findById(taskId).select('userId projectId');
     if (!task) return { notFound: true };
     if (String(task.userId) !== String(userId)) {
@@ -111,7 +120,8 @@ exports.addTaskToPlanner = async (req, res) => {
         );
 
         if (!alreadyScheduled) {
-            planner.tasks.push({ ...withClientId(req.body), ...resolved.ref, subtaskId: subtaskId || null, time, duration, comments });
+            const sub = resolved.ref.taskType === 'projectTaskGroup' ? null : subtaskId || null;
+            planner.tasks.push({ ...withClientId(req.body), ...resolved.ref, subtaskId: sub, time, duration, comments });
             await planner.save();
         }
 
@@ -143,8 +153,12 @@ exports.rolloverPlanner = async (req, res) => {
         ]);
         const existingTasks = await Task.find({ _id: { $in: taskIds } }).select('_id');
         const existingList = await ProjectTask.find({ _id: { $in: listIds } }).select('_id');
-        const alive = new Set([...existingTasks, ...existingList].map((t) => String(t._id)));
-        const done = new Set([...doneTasks, ...doneList].map((t) => String(t._id)));
+        const groupIds = allEntries.filter((e) => e.taskType === 'projectTaskGroup').map((e) => e.taskId);
+        const existingGroups = groupIds.length ? await ProjectTaskGroup.find({ _id: { $in: groupIds } }).select('_id') : [];
+        const groupTasks = existingGroups.length ? await ProjectTask.find({ groupId: { $in: existingGroups.map((g) => g._id) } }).select('groupId status') : [];
+        const doneGroups = existingGroups.filter((g) => groupStatus(groupTasks.filter((t) => String(t.groupId) === String(g._id))) === 'Completed');
+        const alive = new Set([...existingTasks, ...existingList, ...existingGroups].map((t) => String(t._id)));
+        const done = new Set([...doneTasks, ...doneList, ...doneGroups].map((t) => String(t._id)));
 
         let target = await Planner.findOne({ userId: req.user.id, date });
         if (!target) target = new Planner({ userId: req.user.id, date, tasks: [] });
