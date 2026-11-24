@@ -9,10 +9,17 @@ export const roadmapProgress = (nodes = []) => {
 
 export const stepsDone = (nodes = []) => nodes.filter(isNodeDone).length;
 
+export const taskProgress = (task) => {
+    if (!task) return 0;
+    const subs = task.subtasks || [];
+    if (subs.length) return Math.round((subs.filter((s) => s.isCompleted).length / subs.length) * 100);
+    return task.status === 'Completed' ? 100 : 0;
+};
+
 export const nextNode = (nodes = [], edges = []) => {
     const done = new Set(nodes.filter(isNodeDone).map((n) => n.id));
-    return nodes.find((n) => !done.has(n.id)
-        && edges.filter((e) => e.target === n.id).every((e) => done.has(e.source)));
+    const open = nodes.filter((n) => !done.has(n.id));
+    return open.find((n) => edges.filter((e) => e.target === n.id).every((e) => done.has(e.source))) || open[0];
 };
 
 export const roadmapHint = (roadmap) => {
@@ -23,7 +30,7 @@ export const roadmapHint = (roadmap) => {
     if (!edges.length) return `Link the ${nodes.length === 2 ? 'two tasks' : 'tasks'} to set the order you'll learn them.`;
     if (roadmapProgress(nodes) === 100) return 'Every step is done. Time for the next skill.';
     const next = nextNode(nodes, edges);
-    return next ? `Next up: ${next.data?.label || 'Untitled task'}` : 'Keep going: finish a step to unlock the next one.';
+    return next ? `Next up: ${next.data?.label || 'Untitled task'}` : 'Keep going.';
 };
 
 export const previewLayout = (nodes = [], width = 340, height = 180, nodeW = 128, nodeH = 44, pad = 24) => {

@@ -9,7 +9,7 @@ import { Button, Card, Chip, SegmentedControl } from '../ui/Controls';
 import { useToast } from '../ui/Toast';
 import ScheduleDial from './ScheduleDial';
 import ShiftSheet from './ShiftSheet';
-import { applyResize, fetchSchedule, previewResize, resetSchedule } from '../../store/slices/ScheduleSlice';
+import { applyResize, applyShift, fetchSchedule, previewResize, previewShift, resetSchedule } from '../../store/slices/ScheduleSlice';
 import { entryInfo } from '../../store/TaskThunks';
 import { formatDuration } from '../../utils/Format';
 import {
@@ -71,6 +71,17 @@ export default function ScheduleCard({ date, entries = [], nowMinutes, onAddTask
     return show(now ? `${selected.label} now ${formatRange(now.start, now.end)}` : `${selected.label} resized`);
   };
 
+  const dragShift = async (segment, offsetMinutes) => {
+    const body = { date, segmentKey: segment.key, offsetMinutes };
+    const p = await dispatch(previewShift(body));
+    if (p.error) return show(p.payload);
+    if (p.payload.requiresConfirmation) return setShifting({ segment, offset: offsetMinutes });
+    const r = await dispatch(applyShift(body));
+    if (r.error) return show(r.payload);
+    const now = r.payload.schedule.segments.find((s) => s.key === segment.key);
+    return show(now ? `${segment.label} now ${formatRange(now.start, now.end)}` : `${segment.label} moved`);
+  };
+
   const addHere = () => {
     const time = freeSlot(segments, entries, 30, { within: selected.key });
     if (!time) return show(`${selected.label} is full`);
@@ -98,7 +109,7 @@ export default function ScheduleCard({ date, entries = [], nowMinutes, onAddTask
 
       <SegmentedControl label="Half of the day" options={HALVES.map((h) => ({ value: h.value, label: h.label }))} value={half} onChange={setHalf} />
 
-      <ScheduleDial segments={segments} half={half} selectedKey={selectedKey} onSelect={setSelectedKey} onResize={dragResize} nowMinutes={nowMinutes}>
+      <ScheduleDial segments={segments} half={half} selectedKey={selectedKey} onSelect={setSelectedKey} onResize={dragResize} onShift={dragShift} nowMinutes={nowMinutes}>
         {selected && (
           <>
             <AppText variant="captionStrong" tone="muted" numberOfLines={1}>{selected.kind === 'work' ? 'Work' : 'Personal'}</AppText>
@@ -159,7 +170,7 @@ export default function ScheduleCard({ date, entries = [], nowMinutes, onAddTask
               })}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button label="Add task" icon={CalendarPlus} variant="secondary" height={44} style={{ flex: 1 }} onPress={addHere} />
-                <Button label="Move" icon={MoveHorizontal} variant="secondary" height={44} style={{ flex: 1 }} onPress={() => setShifting(selected)} accessibilityLabel={`Move ${selected.label}`} />
+                <Button label="Move" icon={MoveHorizontal} variant="secondary" height={44} style={{ flex: 1 }} onPress={() => setShifting({ segment: selected })} accessibilityLabel={`Move ${selected.label}`} />
                 <Button label="Resize" icon={UnfoldHorizontal} variant="secondary" height={44} style={{ flex: 1 }} onPress={() => setResizing({ segment: selected })} accessibilityLabel={`Resize ${selected.label}`} />
               </View>
             </>
@@ -173,11 +184,11 @@ export default function ScheduleCard({ date, entries = [], nowMinutes, onAddTask
         </AppText>
       )}
 
-      {edges.length > 0 && (
-        <AppText variant="caption" tone="muted">Drag the circles on the ring to stretch or shrink the selected segment.</AppText>
-      )}
+      <AppText variant="caption" tone="muted">
+        Drag a coloured work period around the ring to move it.{edges.length > 0 ? ' Drag the circles at its ends to make it longer or shorter.' : ''}
+      </AppText>
 
-      <ShiftSheet visible={!!shifting} onClose={() => setShifting(null)} date={date} segment={shifting} />
+      <ShiftSheet visible={!!shifting} onClose={() => setShifting(null)} date={date} segment={shifting?.segment} initialOffset={shifting?.offset} />
       <ShiftSheet
         visible={!!resizing}
         onClose={() => setResizing(null)}

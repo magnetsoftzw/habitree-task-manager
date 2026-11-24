@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import toast from 'react-hot-toast';
 import ReactFlow, {
-    Background, MarkerType, MiniMap, ReactFlowProvider, addEdge, useEdgesState, useNodesState, useReactFlow, useViewport,
+    Background, ConnectionMode, MarkerType, MiniMap, ReactFlowProvider, addEdge, useEdgesState, useNodesState, useReactFlow, useViewport,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
@@ -19,7 +19,7 @@ import {
     clearActiveRoadmap, deleteRoadmap, fetchRoadmapById, persistRoadmap, updateRoadmapMeta,
 } from '../../store/slices/roadmapSlice';
 import { fetchInventoryTasks, updateTaskStatus } from '../../store/slices/taskSlice';
-import { roadmapProgress, stepsDone } from '../../utils/Roadmap';
+import { roadmapProgress, stepsDone, taskProgress } from '../../utils/Roadmap';
 import { formatDueDate, toDateKey } from '../../utils/Format';
 import './RoadmapCanvas.css';
 
@@ -40,7 +40,14 @@ const toFlowNode = (n) => ({
     data: { label: n.data?.label, status: n.data?.status, progress: n.data?.progress },
 });
 
-const toFlowEdge = (e) => ({ id: e.id, source: e.source, target: e.target, ...EDGE_OPTIONS });
+const toFlowEdge = (e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    sourceHandle: e.sourceHandle || 'bottom',
+    targetHandle: e.targetHandle || 'top',
+    ...EDGE_OPTIONS,
+});
 
 const layered = (nodes, edges) => {
     const depth = new Map(nodes.map((n) => [n.id, 0]));
@@ -114,10 +121,12 @@ const Editor = ({ roadmap }) => {
                         id: n.id,
                         type: 'taskNode',
                         position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
-                        data: { label: t?.title || n.data.label, status: t?.status || n.data.status, progress: t?.progress ?? n.data.progress ?? 0 },
+                        data: { label: t?.title || n.data.label, status: t?.status || n.data.status, progress: t ? taskProgress(t) : n.data.progress ?? 0 },
                     };
                 }),
-                edges: currentEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+                edges: currentEdges.map((e) => ({
+                    id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle,
+                })),
             })).unwrap();
             setSaveState('saved');
         } catch {
@@ -158,9 +167,11 @@ const Editor = ({ roadmap }) => {
     }, [onEdgesChange, touch]);
 
     const onConnect = useCallback((params) => {
-        if (params.source === params.target) return;
+        if (!params.source || !params.target || params.source === params.target) return;
         setEdges((eds) => {
-            if (eds.some((e) => e.source === params.source && e.target === params.target)) return eds;
+            const linked = (e) => (e.source === params.source && e.target === params.target)
+                || (e.source === params.target && e.target === params.source);
+            if (eds.some(linked)) return eds;
             return addEdge({ ...params, id: `e-${params.source}-${params.target}`, ...EDGE_OPTIONS }, eds);
         });
         touch();
@@ -175,7 +186,7 @@ const Editor = ({ roadmap }) => {
             x: Math.round(((rect?.width || 800) / 2 - vp.x) / vp.zoom - NODE_W / 2 + (nodes.length % 4) * 24),
             y: Math.round(((rect?.height || 600) / 2 - vp.y) / vp.zoom - 70 + (nodes.length % 4) * 24),
         };
-        setNodes((nds) => [...nds, { id: task._id, type: 'taskNode', position, data: { label: task.title, status: task.status, progress: task.progress || 0 } }]);
+        setNodes((nds) => [...nds, { id: task._id, type: 'taskNode', position, data: { label: task.title, status: task.status, progress: taskProgress(task) } }]);
         setSelectedId(task._id);
         touch();
     };
@@ -216,18 +227,22 @@ const Editor = ({ roadmap }) => {
     };
 
     const setStatus = async (task, status) => {
+        const patch = (s) => setNodes((nds) => nds.map((n) => (n.id === task._id
+            ? { ...n, data: { ...n.data, status: s, progress: taskProgress({ ...task, status: s }) } }
+            : n)));
+        patch(status);
         try {
             await dispatch(updateTaskStatus({ id: task._id, status })).unwrap();
             dispatch(fetchInventoryTasks());
-            touch();
-        } catch {
-            toast.error('Could not update the status');
+        } catch (err) {
+            patch(task.status);
+            toast.error(err?.message || 'Could not update the status');
         }
     };
 
     const progressNodes = nodes.map((n) => {
         const t = taskById.get(n.id);
-        return { id: n.id, data: { status: t?.status || n.data.status, progress: t?.progress ?? n.data.progress } };
+        return { id: n.id, data: { status: t?.status || n.data.status, progress: t ? taskProgress(t) : n.data.progress } };
     });
     const progress = roadmapProgress(progressNodes);
     const selected = selectedId ? nodes.find((n) => n.id === selectedId) : null;
@@ -290,6 +305,7 @@ const Editor = ({ roadmap }) => {
                         onNodesChange={onNodesChangeTracked}
                         onEdgesChange={onEdgesChangeTracked}
                         onConnect={onConnect}
+                        connectionMode={ConnectionMode.Loose}
                         onNodeClick={(_, n) => setSelectedId(n.id)}
                         onPaneClick={() => setSelectedId(null)}
                         defaultEdgeOptions={EDGE_OPTIONS}
@@ -362,7 +378,7 @@ const Editor = ({ roadmap }) => {
                                 </label>
                             )}
                             <dl className="rm-insp-facts">
-                                <div><dt>Progress</dt><dd className="tabular">{Math.round(selTask?.progress ?? selected.data.progress ?? 0)}%</dd></div>
+                                <div><dt>Progress</dt><dd className="tabular">{selTask ? taskProgress(selTask) : Math.round(selected.data.progress ?? 0)}%</dd></div>
                                 <div>
                                     <dt>Due</dt>
                                     <dd className={overdue ? 'is-overdue' : ''}>{selTask?.scheduledDate ? formatDueDate(selTask.scheduledDate) : '—'}</dd>
@@ -387,7 +403,7 @@ const Editor = ({ roadmap }) => {
                             <span className="rm-insp-overline">Roadmap</span>
                             <h2>{roadmap.skillName}</h2>
                             <p className="rm-insp-help">
-                                Select a task to see its details. Drag tasks to arrange them, drag from the bottom dot of one task to the top dot of another to link them, and press Delete to remove a selected link.
+                                Select a task to see its details. Drag tasks to arrange them. Drag from any of a task's four dots to a dot on another task to link them, and press Delete to remove a selected link. Links show order only, so you can update any task at any time.
                             </p>
                         </div>
                     )}

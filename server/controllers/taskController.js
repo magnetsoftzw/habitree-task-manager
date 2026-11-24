@@ -174,13 +174,15 @@ exports.deleteTask = async (req, res) => {
 exports.updateTaskStatus = async (req, res) => {
     const { status } = req.body;
     try {
-        const task = await Task.findOneAndUpdate(
-            { _id: req.params.id, userId: req.user.id },
-            { status },
-            { new: true }
-        );
+        if (!Task.schema.path('status').enumValues.includes(status)) {
+            return res.status(400).json({ success: false, message: "Unknown status", field: 'status' });
+        }
 
+        const task = await Task.findOne({ _id: req.params.id, userId: req.user.id });
         if (!task) return res.status(404).json({ success: false, message: "Task not found" });
+
+        task.status = status;
+        await task.save(); // Runs the roadmap sync hook
 
         if (task.projectId) {
             const project = await Project.findById(task.projectId);

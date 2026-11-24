@@ -83,7 +83,7 @@ export const setTaskStatus = writer('tasks/setStatus', {
   request: ({ id, status }) => ({ method: 'patch', url: `/tasks/${id}/status`, body: { status } }),
   local: ({ id, status }, getState) => ({ ...findTask(getState().tasks, id), _id: id, status }),
   fromServer: (data) => data.task,
-  kinds: ['tasks'],
+  kinds: ['tasks', 'roadmaps'],
   label: 'A task status change',
   fallback: 'Could not update the status',
 });

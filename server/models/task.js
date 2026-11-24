@@ -66,7 +66,8 @@ TaskSchema.post('save', async function(doc) {
         {
             $set: {
                 "nodes.$.data.progress": progress,
-                "nodes.$.data.status": doc.status
+                "nodes.$.data.status": doc.status,
+                "nodes.$.data.label": doc.title
             }
         }
     );

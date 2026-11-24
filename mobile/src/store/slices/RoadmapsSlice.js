@@ -4,6 +4,8 @@ import { errorMessage } from '../../utils/Format';
 import { fetcher, writer } from '../../sync/Thunks';
 import { canReachServer, OFFLINE_MESSAGE } from '../../sync/SyncEngine';
 import { objectId } from '../../sync/ObjectId';
+import { setTaskStatus } from './TasksSlice';
+import { taskProgress } from '../../utils/Roadmap';
 
 export const fetchRoadmaps = fetcher('roadmaps/fetchAll', async () => (await API.get('/roadmaps')).data.roadmaps);
 
@@ -50,7 +52,15 @@ export const deleteRoadmap = writer('roadmaps/delete', {
 
 const stripNode = (n) => ({ id: n.id, type: n.type || 'taskNode', position: n.position || { x: 0, y: 0 }, data: { label: n.data?.label, progress: n.data?.progress || 0, status: n.data?.status || 'Not Started' } });
 export const toPayloadNodes = (nodes) => nodes.map(stripNode);
-export const toPayloadEdges = (edges) => edges.map((e) => ({ id: e.id, source: e.source, target: e.target, animated: !!e.animated, label: e.label || '' }));
+export const toPayloadEdges = (edges) => edges.map((e) => ({
+  id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle || null, targetHandle: e.targetHandle || null, animated: !!e.animated, label: e.label || '',
+}));
+
+const patchNodes = (state, id, data) => {
+  const apply = (nodes = []) => nodes.forEach((n) => { if (n.id === id) n.data = { ...n.data, ...data }; });
+  state.items.forEach((r) => apply(r.nodes));
+  apply(state.current?.nodes);
+};
 
 const roadmapsSlice = createSlice({
   name: 'roadmaps',
@@ -99,6 +109,18 @@ const roadmapsSlice = createSlice({
         const r = action.payload;
         state.items = state.items.map((i) => (i._id === r._id ? { ...i, skillName: r.skillName, nodes: r.nodes, edges: r.edges, updatedAt: r.updatedAt } : i));
         if (state.current?._id === r._id) state.current.skillName = r.skillName;
+      })
+      .addCase(setTaskStatus.pending, (state, action) => {
+        const { id, status } = action.meta.arg;
+        patchNodes(state, id, status === 'Completed' ? { status, progress: 100 } : { status });
+      })
+      .addCase(setTaskStatus.fulfilled, (state, action) => {
+        const task = action.payload;
+        if (task?._id) patchNodes(state, task._id, { status: task.status, progress: taskProgress(task) });
+      })
+      .addCase(setTaskStatus.rejected, (state, action) => {
+        const { id, previous } = action.meta.arg;
+        if (previous) patchNodes(state, id, { status: previous });
       })
       .addCase(deleteRoadmap.pending, (state, action) => {
         state.items = state.items.filter((r) => r._id !== action.meta.arg);

@@ -56,7 +56,7 @@ export const updateTaskStatus = createAsyncThunk(
             const response = await API.patch(`/tasks/${id}/status`, { status });
             return response.data.task;
         } catch (error) {
-            return rejectWithValue(error.response.data);
+            return rejectWithValue(error.response?.data || { message: 'Could not reach the server' });
         }
     }
 );
@@ -121,6 +121,29 @@ const taskSlice = createSlice({
             .addCase(updateTaskAction.fulfilled, (state, action) => {
                 state.currentTask = action.payload;
                 state.loading = false;
+            })
+            .addCase(updateTaskStatus.pending, (state, action) => {
+                const { id, status } = action.meta.arg;
+                Object.values(state.inventory || {}).forEach((list) => list.forEach((x) => {
+                    if (x._id === id) {
+                        x.previousStatus = x.status;
+                        x.status = status;
+                    }
+                }));
+            })
+            .addCase(updateTaskStatus.rejected, (state, action) => {
+                const { id } = action.meta.arg;
+                Object.values(state.inventory || {}).forEach((list) => list.forEach((x) => {
+                    if (x._id === id && x.previousStatus) x.status = x.previousStatus;
+                }));
+            })
+            .addCase(updateTaskStatus.fulfilled, (state, action) => {
+                const t = action.payload;
+                if (!t?._id) return;
+                Object.values(state.inventory || {}).forEach((list) => list.forEach((x) => {
+                    if (x._id === t._id) Object.assign(x, { status: t.status, updatedAt: t.updatedAt });
+                }));
+                if (state.currentTask?._id === t._id) state.currentTask.status = t.status;
             })
             .addCase(deleteTask.fulfilled, (state, action) => {
                 const deletedId = action.payload;

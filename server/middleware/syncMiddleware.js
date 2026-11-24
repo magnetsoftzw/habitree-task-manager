@@ -7,8 +7,8 @@ const DATE = '(\\d{4}-\\d{2}-\\d{2})';
 const MAX_SKEW_MS = 1000 * 60 * 60 * 24 * 30;
 
 const RULES = [
-    { re: new RegExp(`^/api/tasks/${ID}/subtasks/${ID}$`), describe: (m) => ({ kinds: ['tasks'], resources: [`task:${m[1]}`] }) },
-    { re: new RegExp(`^/api/tasks/${ID}(/.*)?$`), describe: (m) => ({ kinds: ['tasks'], resources: [`task:${m[1]}`] }) },
+    { re: new RegExp(`^/api/tasks/${ID}/subtasks/${ID}$`), describe: (m) => ({ kinds: ['tasks', 'roadmaps'], resources: [`task:${m[1]}`] }) },
+    { re: new RegExp(`^/api/tasks/${ID}(/.*)?$`), describe: (m) => ({ kinds: ['tasks', 'roadmaps'], resources: [`task:${m[1]}`] }) },
     { re: /^\/api\/tasks\/?$/, describe: () => ({ kinds: ['tasks'] }) },
     { re: /^\/api\/groups/, describe: () => ({ kinds: ['groups', 'tasks'] }) },
     { re: new RegExp(`^/api/projects/${ID}/tasks/${ID}/subtasks/${ID}$`), describe: (m) => ({ projectId: m[1], kinds: [`projectTasks:${m[1]}`], resources: [`projectSubtask:${m[3]}`] }) },

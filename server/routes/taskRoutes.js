@@ -3,7 +3,6 @@ const router = express.Router();
 const taskController = require('../controllers/taskController');
 const subtaskController = require('../controllers/subtaskController');
 const { protect } = require('../middleware/authMiddleware');
-const { checkPrerequisites } = require('../middleware/dependencyMiddleware');
 
 // All task routes require authentication
 router.use(protect);
@@ -24,8 +23,8 @@ router.route('/:id')
 /**
  * @section Task Execution & Status
  */
-// Update status (Start/Complete/Shelve) + Kanban Bridge + Dependency Check
-router.patch('/:id/status', checkPrerequisites, taskController.updateTaskStatus);
+// Update status (Start/Complete/Shelve) + Kanban Bridge. Roadmap links are order only, never locks.
+router.patch('/:id/status', taskController.updateTaskStatus);
 
 /**
  * @section Subtask Management

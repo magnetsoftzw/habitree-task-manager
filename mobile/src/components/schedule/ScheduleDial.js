@@ -35,7 +35,45 @@ function Handle({ x, y, onGrab, onMove, onDrop }) {
   return <View {...responder.panHandlers} style={{ position: 'absolute', left: x - HANDLE / 2, top: y - HANDLE / 2, width: HANDLE, height: HANDLE }} />;
 }
 
-export default function ScheduleDial({ segments, half, selectedKey, onSelect, onResize, nowMinutes, size = 260, children }) {
+function RingTouch({ size, hitTest, onTap, onGrab, onMove, onDrop }) {
+  const latest = useRef({});
+  latest.current = { hitTest, onTap, onGrab, onMove, onDrop };
+  const touch = useRef(null);
+  const responder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: (e) => !!latest.current.hitTest(e.nativeEvent.locationX, e.nativeEvent.locationY),
+    onMoveShouldSetPanResponder: () => false,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: (e) => {
+      const { locationX: x, locationY: y } = e.nativeEvent;
+      touch.current = { x, y, segment: latest.current.hitTest(x, y), moved: false };
+    },
+    onPanResponderMove: (_, g) => {
+      const t = touch.current;
+      if (!t) return;
+      if (!t.moved) {
+        if (Math.abs(g.dx) + Math.abs(g.dy) < 8 || t.segment.kind !== 'work') return;
+        t.moved = true;
+        latest.current.onGrab(t.segment, t.x, t.y);
+      }
+      latest.current.onMove(g.dx, g.dy);
+    },
+    onPanResponderRelease: () => {
+      const t = touch.current;
+      touch.current = null;
+      if (!t) return;
+      if (t.moved) latest.current.onDrop();
+      else latest.current.onTap(t.segment);
+    },
+    onPanResponderTerminate: () => {
+      const t = touch.current;
+      touch.current = null;
+      if (t?.moved) latest.current.onDrop(true);
+    },
+  })).current;
+  return <View {...responder.panHandlers} style={{ position: 'absolute', left: 0, top: 0, width: size, height: size }} />;
+}
+
+export default function ScheduleDial({ segments, half, selectedKey, onSelect, onResize, onShift, nowMinutes, size = 260, children }) {
   const { colors } = useTheme();
   const from = half * HALF;
   const cx = size / 2;
@@ -43,10 +81,14 @@ export default function ScheduleDial({ segments, half, selectedKey, onSelect, on
   const outer = size / 2 - 22;
   const inner = outer - 38;
   const [draft, setDraft] = useState(null);
+  const [moving, setMoving] = useState(null);
   const grab = useRef(null);
+  const shiftGrab = useRef(null);
   const index = segments.findIndex((s) => s.key === selectedKey);
   const selected = segments[index] || null;
-  const drawn = draft && selected ? segments.map((s) => (s.key === selected.key ? { ...s, [draft.edge]: draft.minute } : s)) : segments;
+  const drawn = draft && selected ? segments.map((s) => (s.key === selected.key ? { ...s, [draft.edge]: draft.minute } : s))
+    : moving ? segments.map((s) => (s.key === moving.key ? { ...s, start: s.start + moving.offset, end: s.end + moving.offset } : s))
+      : segments;
   const pieces = piecesForHalf(drawn, half).sort((a, b) => (a.segment.key === selectedKey) - (b.segment.key === selectedKey));
   const mid = (outer + inner) / 2;
 
@@ -79,6 +121,43 @@ export default function ScheduleDial({ segments, half, selectedKey, onSelect, on
     await onResize(draft.edge, draft.minute - g.origin);
     return setDraft(null);
   };
+  const hitTest = (x, y) => {
+    const r = Math.hypot(x - cx, y - cy);
+    if (r < inner - 8 || r > outer + 12) return null;
+    const minute = minuteAt(x, y);
+    const piece = piecesForHalf(segments, half).find((p) => minute >= p.start && minute < p.end);
+    return piece?.segment || null;
+  };
+
+  const shiftGrabbed = (segment, x, y) => {
+    onSelect(segment.key);
+    shiftGrab.current = { key: segment.key, x, y, last: minuteAt(x, y), turned: 0 };
+    setMoving({ key: segment.key, offset: 0 });
+  };
+
+  const shiftTo = (dx, dy) => {
+    const g = shiftGrab.current;
+    if (!g) return;
+    const minute = minuteAt(g.x + dx, g.y + dy);
+    let step = minute - g.last;
+    while (step > HALF / 2) step -= HALF;
+    while (step < -HALF / 2) step += HALF;
+    g.last = minute;
+    g.turned += step;
+    const offset = Math.round(g.turned / 5) * 5;
+    setMoving((m) => (m && m.offset === offset ? m : { key: g.key, offset }));
+  };
+
+  const shiftDrop = async (cancelled) => {
+    const g = shiftGrab.current;
+    shiftGrab.current = null;
+    const offset = g ? Math.round(g.turned / 5) * 5 : 0;
+    if (cancelled || !g || !offset || !onShift) return setMoving(null);
+    const segment = segments.find((s) => s.key === g.key);
+    await onShift(segment, offset);
+    return setMoving(null);
+  };
+
   const hours = [0, 3, 6, 9].map((h) => ({ h, label: String(h === 0 ? 12 : h), angle: angleOf(from + h * 60, from) }));
   const nowVisible = nowMinutes != null && nowMinutes >= from && nowMinutes < from + HALF;
 
@@ -94,7 +173,7 @@ export default function ScheduleDial({ segments, half, selectedKey, onSelect, on
           const grow = selected ? 6 : 0;
           const parts = p.end - p.start > HALF / 2 ? [[p.start, (p.start + p.end) / 2], [(p.start + p.end) / 2, p.end]] : [[p.start, p.end]];
           return (
-            <G key={`${p.segment.key}-${p.start}`} onPress={() => onSelect(p.segment.key)}>
+            <G key={`${p.segment.key}-${p.start}`}>
               {parts.map(([a, b]) => (
                 <Path
                   key={a}
@@ -125,12 +204,20 @@ export default function ScheduleDial({ segments, half, selectedKey, onSelect, on
           const [x1, y1] = polar(cx, cy, outer + 4, a);
           return <Line x1={x0} y1={y0} x2={x1} y2={y1} stroke={colors.nowBorder} strokeWidth={3} strokeLinecap="round" />;
         })()}
-        {edges.map((edge) => {
+        {!moving && edges.map((edge) => {
           const [x, y] = polar(cx, cy, mid, angleOf(draft?.edge === edge ? draft.minute : selected[edge], from));
           return <Circle key={edge} cx={x} cy={y} r={draft?.edge === edge ? 13 : 11} fill={colors.surface} stroke={colors.text} strokeWidth={2.5} />;
         })}
       </Svg>
-      {edges.map((edge) => {
+      <RingTouch
+        size={size}
+        hitTest={hitTest}
+        onTap={(segment) => onSelect(segment.key)}
+        onGrab={shiftGrabbed}
+        onMove={shiftTo}
+        onDrop={shiftDrop}
+      />
+      {!moving && edges.map((edge) => {
         const [x, y] = polar(cx, cy, mid, angleOf(selected[edge], from));
         return (
           <Handle
@@ -144,7 +231,16 @@ export default function ScheduleDial({ segments, half, selectedKey, onSelect, on
         );
       })}
       <View pointerEvents="box-none" style={{ position: 'absolute', top: cy - inner + 12, left: cx - inner + 12, width: (inner - 12) * 2, height: (inner - 12) * 2, alignItems: 'center', justifyContent: 'center' }}>
-        {draft && selected ? (
+        {moving ? (() => {
+          const seg = segments.find((s) => s.key === moving.key);
+          return (
+            <>
+              <AppText variant="captionStrong" tone="muted" numberOfLines={1}>Move {seg?.label}</AppText>
+              <AppText variant="h4" numeric>{moving.offset === 0 ? 'No change' : `${moving.offset > 0 ? '+' : '−'}${formatLength(Math.abs(moving.offset))}`}</AppText>
+              {seg && <AppText variant="caption" tone="muted" numeric>{clock12(seg.start + moving.offset)} – {clock12(seg.end + moving.offset)}</AppText>}
+            </>
+          );
+        })() : draft && selected ? (
           <>
             <AppText variant="captionStrong" tone="muted">{draft.edge === 'start' ? 'Starts' : 'Ends'}</AppText>
             <AppText variant="h4" numeric>{clock12(draft.minute)}</AppText>

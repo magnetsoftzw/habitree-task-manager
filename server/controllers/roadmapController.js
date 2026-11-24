@@ -1,6 +1,7 @@
 const { withClientId } = require('../utils/clientId');
 const Roadmap = require('../models/roadmap');
 const Task = require('../models/task');
+const { liveNodes } = require('../utils/roadmapNodes');
 
 // @desc    Create or Update a Roadmap (Save Canvas State)
 // @route   POST /api/roadmaps
@@ -33,7 +34,15 @@ exports.getUserRoadmaps = async (req, res) => {
             .select('skillName updatedAt nodes edges')
             .sort({ updatedAt: -1 });
 
-        res.json({ success: true, roadmaps });
+        const fresh = await liveNodes(roadmaps.flatMap((r) => r.nodes), req.user.id);
+        let i = 0;
+        const result = roadmaps.map((r) => {
+            const nodes = fresh.slice(i, i + r.nodes.length);
+            i += r.nodes.length;
+            return { ...r.toObject(), nodes };
+        });
+
+        res.json({ success: true, roadmaps: result });
 
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -50,32 +59,7 @@ exports.getRoadmapById = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Roadmap not found' });
         }
 
-        // Populate task data for each node so the frontend gets live progress/status
-        const populatedNodes = await Promise.all(
-            roadmap.nodes.map(async (node) => {
-                const task = await Task.findOne({ _id: node.id, userId: req.user.id }).select('title status subtasks category scheduledDate groupId').populate('groupId', 'name color');
-                if (!task) return node.toObject();
-
-                const completedSubs = task.subtasks?.filter(s => s.isCompleted).length || 0;
-                const totalSubs = task.subtasks?.length || 0;
-                const progress = totalSubs > 0
-                    ? Math.round((completedSubs / totalSubs) * 100)
-                    : (task.status === 'Completed' ? 100 : 0);
-
-                return {
-                    ...node.toObject(),
-                    data: {
-                        ...node.data,
-                        label: task.title,
-                        progress,
-                        status: task.status,
-                        category: task.category,
-                        dueDate: task.scheduledDate,
-                        group: task.groupId ? { name: task.groupId.name, color: task.groupId.color } : null,
-                    }
-                };
-            })
-        );
+        const populatedNodes = await liveNodes(roadmap.nodes, req.user.id, { withDetails: true });
 
         res.json({
             success: true,
@@ -106,7 +90,7 @@ exports.updateRoadmap = async (req, res) => {
             if (owned !== new Set(nodes.map((n) => String(n.id))).size) {
                 return res.status(400).json({ success: false, message: 'Every node must be one of your tasks', field: 'nodes' });
             }
-            updates.nodes = nodes;
+            updates.nodes = await liveNodes(nodes, req.user.id);
         }
         if (edges !== undefined) {
             if (!Array.isArray(edges)) return res.status(400).json({ success: false, message: 'edges must be an array', field: 'edges' });
@@ -114,7 +98,12 @@ exports.updateRoadmap = async (req, res) => {
             if (nodes && edges.some((e) => !ids.has(String(e.source)) || !ids.has(String(e.target)) || e.source === e.target)) {
                 return res.status(400).json({ success: false, message: 'Edges must link two different nodes in this roadmap', field: 'edges' });
             }
-            updates.edges = edges;
+            const SIDES = ['top', 'right', 'bottom', 'left'];
+            const side = (v) => (SIDES.includes(v) ? v : null);
+            updates.edges = edges.map((e) => ({
+                id: e.id, source: e.source, target: e.target, label: e.label,
+                sourceHandle: side(e.sourceHandle), targetHandle: side(e.targetHandle),
+            }));
         }
         if (zoom !== undefined) updates.zoom = zoom;
         if (pan !== undefined) updates.pan = pan;

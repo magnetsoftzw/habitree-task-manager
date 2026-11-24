@@ -13,14 +13,22 @@ import { OptionSheet } from '../../components/ui/Sheet';
 import { useToast } from '../../components/ui/Toast';
 import DotGrid from '../../components/roadmaps/DotGrid';
 import { useStartFocus } from '../../components/focus/FocusActions';
-import { deleteRoadmap, editCurrent, fetchRoadmap, saveRoadmap, toPayloadEdges, toPayloadNodes, updateNodeData } from '../../store/slices/RoadmapsSlice';
+import { deleteRoadmap, editCurrent, fetchRoadmap, saveRoadmap, toPayloadEdges, toPayloadNodes } from '../../store/slices/RoadmapsSlice';
 import { fetchInventory, setTaskStatus } from '../../store/slices/TasksSlice';
 import { isOverdue, longDate } from '../../utils/Format';
 import { TASK_STATUSES, TASK_STATUS_LABELS } from '../../utils/Status';
-import { roadmapProgress } from '../../utils/Roadmap';
+import { roadmapProgress, SIDES, taskProgress } from '../../utils/Roadmap';
 
 const NODE_WIDTH = 260;
 const GAP = 58;
+const DOT = 14;
+
+const dotPlace = (side) => ({
+  top: { top: -DOT / 2 - 2, left: NODE_WIDTH / 2 - DOT / 2 },
+  bottom: { bottom: -DOT / 2 - 2, left: NODE_WIDTH / 2 - DOT / 2 },
+  left: { left: -DOT / 2 - 2, top: '50%', marginTop: -DOT / 2 },
+  right: { right: -DOT / 2 - 2, top: '50%', marginTop: -DOT / 2 },
+}[side]);
 
 const topoOrder = (nodes, edges) => {
   const indeg = new Map(nodes.map((n) => [n.id, 0]));
@@ -101,20 +109,29 @@ export default function RoadmapEditorScreen({ route, navigation }) {
     }
   }, [dispatch, roadmapId, show]);
 
-  const onNodePress = (node) => {
+  const onNodePress = (node, side = 'top') => {
     if (!linkFrom) return setSelectedId(node.id);
-    if (node.id === linkFrom) return setLinkFrom(null);
-    if (edges.some((e) => e.source === linkFrom && e.target === node.id)) {
+    const from = linkFrom.id;
+    if (node.id === from) return setLinkFrom(null);
+    if (edges.some((e) => (e.source === from && e.target === node.id) || (e.source === node.id && e.target === from))) {
       setLinkFrom(null);
       return show('Those tasks are already linked');
     }
-    if (reaches(edges, node.id, linkFrom)) {
+    if (reaches(edges, node.id, from)) {
       setLinkFrom(null);
       return show("That link would make a loop, so it wasn't added");
     }
-    persist(nodes, [...edges, { id: `e-${linkFrom}-${node.id}`, source: linkFrom, target: node.id, animated: false, label: '' }]);
+    persist(nodes, [...edges, {
+      id: `e-${from}-${node.id}`, source: from, target: node.id, sourceHandle: linkFrom.side, targetHandle: side, animated: false, label: '',
+    }]);
     setLinkFrom(null);
     setSelectedId(node.id);
+  };
+
+  const onDotPress = (node, side) => {
+    if (!linkFrom) return setLinkFrom({ id: node.id, side });
+    if (linkFrom.id === node.id) return setLinkFrom(linkFrom.side === side ? null : { id: node.id, side });
+    return onNodePress(node, side);
   };
 
   const available = Object.entries(inventory).flatMap(([group, list]) => list.map((t) => ({ ...t, groupName: group })))
@@ -128,7 +145,7 @@ export default function RoadmapEditorScreen({ route, navigation }) {
       data: {
         label: task.title,
         status: task.status,
-        progress: task.subtasks?.length ? Math.round((task.subtasks.filter((s) => s.isCompleted).length / task.subtasks.length) * 100) : task.status === 'Completed' ? 100 : 0,
+        progress: taskProgress(task),
         category: task.category,
         dueDate: task.scheduledDate,
         group: task.groupId ? { name: task.groupId.name, color: task.groupId.color } : null,
@@ -139,13 +156,8 @@ export default function RoadmapEditorScreen({ route, navigation }) {
   };
 
   const changeStatus = async (status) => {
-    const prev = selected.data.status;
-    dispatch(updateNodeData({ id: selected.id, data: { status, progress: status === 'Completed' ? 100 : selected.data.progress } }));
-    const r = await dispatch(setTaskStatus({ id: selected.id, status, previous: prev }));
-    if (r.error) {
-      dispatch(updateNodeData({ id: selected.id, data: { status: prev } }));
-      show(r.payload);
-    }
+    const r = await dispatch(setTaskStatus({ id: selected.id, status, previous: selected.data.status }));
+    if (r.error) show(r.payload);
   };
 
   if (!roadmap) {
@@ -198,7 +210,7 @@ export default function RoadmapEditorScreen({ route, navigation }) {
 
       {linkFrom && (
         <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingLeft: 16, paddingRight: 8, backgroundColor: colors.accentSoft }}>
-          <AppText variant="meta" color={colors.onAccentSoft} style={{ flex: 1 }}>Tap the task that comes after {titleOf(linkFrom)}</AppText>
+          <AppText variant="meta" color={colors.onAccentSoft} style={{ flex: 1 }}>Tap a dot or task that comes after {titleOf(linkFrom.id)}</AppText>
           <Button label="Cancel" variant="ghost" height={40} onPress={() => setLinkFrom(null)} />
         </View>
       )}
@@ -220,7 +232,7 @@ export default function RoadmapEditorScreen({ route, navigation }) {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSel }}
-                  accessibilityLabel={`${node.data?.label}, ${st.label}${linkFrom ? '. Tap to link' : ''}`}
+                  accessibilityLabel={`${node.data?.label}, ${st.label}${linkFrom && linkFrom.id !== node.id ? '. Tap to link' : ''}`}
                   onPress={() => onNodePress(node)}
                   style={{
                     width: NODE_WIDTH, padding: 16, gap: 8, backgroundColor: colors.surface, borderRadius: radius.xl,
@@ -234,13 +246,24 @@ export default function RoadmapEditorScreen({ route, navigation }) {
                   {otherPrereqs.length > 0 && (
                     <AppText variant="caption" tone="muted">After {otherPrereqs.map((e) => titleOf(e.source)).join(', ')}</AppText>
                   )}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Link ${node.data?.label} to the task that comes after it`}
-                    onPress={() => setLinkFrom(linkFrom === node.id ? null : node.id)}
-                    hitSlop={16}
-                    style={{ position: 'absolute', left: NODE_WIDTH / 2 - 8, bottom: -9, width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: colors.surface, backgroundColor: linkFrom === node.id || isSel ? colors.accent : colors.textFaint }}
-                  />
+                  {SIDES.map((side) => {
+                    const active = linkFrom?.id === node.id && linkFrom.side === side;
+                    const target = linkFrom && linkFrom.id !== node.id;
+                    return (
+                      <Pressable
+                        key={side}
+                        accessibilityRole="button"
+                        accessibilityLabel={target ? `Link to the ${side} of ${node.data?.label}` : `Link from the ${side} of ${node.data?.label}`}
+                        onPress={() => onDotPress(node, side)}
+                        hitSlop={12}
+                        style={{
+                          position: 'absolute', ...dotPlace(side), width: DOT, height: DOT, borderRadius: DOT / 2, borderWidth: 2,
+                          borderColor: target ? colors.accent : colors.surface,
+                          backgroundColor: active || (isSel && !linkFrom) ? colors.accent : target ? colors.surface : colors.textFaint,
+                        }}
+                      />
+                    );
+                  })}
                 </Pressable>
                 {next && <Connector linked={linkedToNext} hint={i === 0 && !linkFrom && edges.length === 0 ? 'Tap a dot to link' : null} />}
               </React.Fragment>

@@ -21,6 +21,8 @@ const edgeSchema = new mongoose.Schema({
     id: { type: String, required: true },
     source: { type: String, required: true }, // Source Task ID
     target: { type: String, required: true }, // Target Task ID
+    sourceHandle: { type: String, enum: ['top', 'right', 'bottom', 'left', null], default: null },
+    targetHandle: { type: String, enum: ['top', 'right', 'bottom', 'left', null], default: null },
     animated: { type: Boolean, default: false },
     label: { type: String, default: '' }
 });
